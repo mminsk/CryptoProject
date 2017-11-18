@@ -2,6 +2,7 @@ from message import Message
 import base64
 from time import sleep
 from threading import Thread
+from RSA_pub_keys import RSAKeys
 
 class Conversation:
     '''
@@ -93,11 +94,22 @@ class Conversation:
                     self.last_processed_msg_id = msg_id
                 sleep(0.01)
 
+
+
+# METHOD CALLED WHEN SOMEONE ENTERS A CONVERSATION 
     def setup_conversation(self):
         '''
         Prepares the conversation for usage
         :return:
         '''
+        
+        list_of_users = self.manager.get_other_users()
+        
+        for user in list_of_users:
+            for person in RSAKeys:
+                if person["user_name"] == user:
+                    print person["RSA_public_key"]
+        
         # You can use this function to initiate your key exchange
         # Useful stuff that you may need:
         # - name of the current user: self.manager.user_name
