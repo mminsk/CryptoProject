@@ -12,7 +12,7 @@ ofile = open('rsa-test-pubkey.pem', 'w')
 ofile.write(key.publickey().exportKey('PEM'))
 ofile.close()
 
-print "hello"
+print 'done'
 
 
 
