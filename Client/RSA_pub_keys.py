@@ -1,8 +1,8 @@
 RSAKeys = [
 	{"user_name" : "Elon",
-           "RSA_public_key" : "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA2E7PiuFSuvuh985W7XyIpL1KUNEdu22SUucNFCUj9RbFzxfKgA7WixMVgiSnw/QAM5Zmz5tfdEduvXmQ2HqyHzSMScrS1oGFPElYAa4gStwGzdG34Vl85c5GBOafu7JweNXov8F1bfELEQ1QafTilEUzd9qkjERs1P2SfrP0JKN5P/h0uR8JcYeVx9HSBCLl45QDKPMNXlev+hOLbcS+RwmiXtyjuT+85dE3fbRkiwEHXSQSIUtbBVMOuUBC2M4BWxwtHmBpTeLGjT5whpkSnENW8AEcjISL2rCcSoDGn/U9+BaxOJKAbbaLGEIBTRwA/yj5wRkUiXsdoaAwm8O3/QIDAQAB"
+           "RSA_public_key" : "public_keys/public_key_elon.pem"
 },
 {"user_name" : "Bill", 
-           "RSA_public_key" : "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEApYEl3vXVU1AgV3qL1K/KufoH1QET1vBFiUYfk7OanQtYKJ1IdQEwdsRuCjvKNKOn8kxu0R+2I4wzt/D3f2Ee/A8WQV1Cat/Y7yRO4E52Ii0CTsDdBfJmSkl9zfSPMkKmppZxCFpg7zrSNGPErfnfDWsuknOwnLYmqMapQ/p8LfTiASyrRgFSWbwRz/Gh24pRcN3Z19MGidiJDVDNdDgnjrMW1jEFCXcIQndfVSoU79tIFfny5juSpSTlROpGprCxzrXADT0oEnyUOW6j+C1UA79diLVptmnyesudLS/eOilarGSXI+AmewrNHpNPhhW2iGCKuj/JtyhfKQBNBQ3vwwIDAQAB"
+           "RSA_public_key" : "public_keys/public_key_bill.pem"
 },
-           {"user_name" : "Steve", "RSA_public_key" : "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA3FV68R5R4UwiE45mWkBBjGjg6Z3CihbGyfekoLKxfFGLe3QqTOw4lzUwsaHaLJlKIRnFFo0PGbZslI5V/V8E6COFCIxgaNwZCcXV9UWDn1M0Zle1bNB8kQJ8iiL1KKvZqtsF0siLkaarDC7Vo1uQxuTvpZUSKHot8w6pSdmeNKaImA7w7Dn/w5wCqJycqyK0tLhJKQGLybo1hbGABFlb3W0w0PJnFLYBgMROMAjpkrVbwl1YsdRG0uDwEbpI3I/eYSP5aSF+iHgZYpleUqZQsml/pGj1Idymbqe7sTmi35eGXCNjfQo4TPZZhF56A7Rx9mdknsDEd59cgAzKtUpQ2QIDAQAB"}]
+           {"user_name" : "Steve", "RSA_public_key" : "public_keys/public_key_steve.pem"}]
