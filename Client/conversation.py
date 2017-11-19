@@ -3,6 +3,8 @@ import base64
 from time import sleep
 from threading import Thread
 from RSA_pub_keys import RSAKeys
+from Crypto.Cipher import PKCS1_OAEP
+from Crypto.PublicKey import RSA
 
 class Conversation:
     '''
@@ -135,11 +137,27 @@ class Conversation:
 
         # process message here
 		# example is base64 decoding, extend this with any crypto processing of your protocol
-        decoded_msg = base64.decodestring(msg_raw)
+        b64_decoded_msg = base64.decodestring(msg_raw)
+        
+        #-----------------------------------------
+        # getting the private key 
+        kfile = open('private_keys/private_key_elon.pem')
+        keystr = kfile.read()
+        kfile.close()
+        key = RSA.importKey(keystr)
+        cipher = PKCS1_OAEP.new(key)
+
+        # decoding the message based on the private key
+        decoded_msg = cipher.decrypt(b64_decoded_msg)
+
+        # remove padding
+        unpadded_msg = decoded_msg[:len(decoded_msg)-ord(decoded_msg[-1])]
+
+        #-----------------------------------------
 
         # print message and add it to the list of printed messages
         self.print_message(
-            msg_raw=decoded_msg,
+            msg_raw=unpadded_msg,
             owner_str=owner_str
         )
 
@@ -161,11 +179,38 @@ class Conversation:
             self.printed_messages.append(m)
 
         # process outgoing message here
+        
+        #-----------------------------------------
+        encoded_msg = ""
+        
+        # encode the message with the public RSA keys of the recipients
+        list_of_users = self.manager.get_other_users()
+        
+        buffer = msg_raw
+        # RSA block length is 2048 bits or 214 bytes
+        plength = 214 - (len(msg_raw)%214)
+        buffer += chr(plength)*plength
+        
+        for person in RSAKeys:
+            if person["user_name"] == "Elon":
+                pubkey_file = person["RSA_public_key"]
+
+                kfile = open(pubkey_file)
+                keystr = kfile.read()
+                kfile.close()
+
+                pubkey = RSA.importKey(keystr)
+                cipher = PKCS1_OAEP.new(pubkey)
+
+                encoded_msg = cipher.encrypt(buffer)
+            
+        #-------------------------------------------
+
 		# example is base64 encoding, extend this with any crypto processing of your protocol
-        encoded_msg = base64.encodestring(msg_raw)
+        b64_encoded_msg = base64.encodestring(encoded_msg)
 
         # post the message to the conversation
-        self.manager.post_message_to_conversation(encoded_msg)
+        self.manager.post_message_to_conversation(b64_encoded_msg)
 
     def print_message(self, msg_raw, owner_str):
         '''
