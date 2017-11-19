@@ -5,6 +5,7 @@ from threading import Thread
 from RSA_pub_keys import RSAKeys
 from Crypto.Cipher import PKCS1_OAEP
 from Crypto.PublicKey import RSA
+import datetime
 
 class Conversation:
     '''
@@ -107,11 +108,12 @@ class Conversation:
         
         list_of_users = self.manager.get_other_users()
         
-        for user in list_of_users:
-            for person in RSAKeys:
-                if person["user_name"] == user:
-                    print person["RSA_public_key"]
-        
+        # for user in list_of_users:
+        #     for person in RSAKeys:
+        #         if person["user_name"] == user:
+        #             print person["RSA_public_key"]
+        #             print datetime.datetime.now()
+
         # You can use this function to initiate your key exchange
         # Useful stuff that you may need:
         # - name of the current user: self.manager.user_name
