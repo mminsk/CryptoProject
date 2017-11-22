@@ -6,6 +6,18 @@ from RSA_pub_keys import RSAKeys
 from Crypto.Cipher import PKCS1_OAEP
 from Crypto.PublicKey import RSA
 import datetime
+from Crypto.PublicKey import RSA
+from Crypto.Signature import PKCS1_v1_5
+from Crypto.Hash import SHA256
+from base64 import b64encode, b64decode
+from Crypto import Random
+import sys, getopt
+from Crypto.Cipher import AES
+from Crypto.Util import Counter
+from Crypto import Random
+from base64 import b64encode
+from base64 import b64decode
+import os
 
 class Conversation:
     '''
@@ -105,9 +117,59 @@ class Conversation:
         Prepares the conversation for usage
         :return:
         '''
+
         
         list_of_users = self.manager.get_other_users()
-        
+
+        # generate key
+        key = "abc"
+        #key = os.urandom(AES.block_size)
+
+        for user in list_of_users:
+            #Begin  Chat   Setup   |   B   |   A   |   RSAEnc kB(  A   |   K   |   T a    |   Sig kA(  B   |   K   |   T a)  )
+
+            #B|K|Timstamp of manager
+            time = datetime.datetime.now()
+            sigMsg = "" + str(user) + str(key) + str(time)
+
+            # Generate signature
+            kfile = open('private_keys/private_key_elon.pem')
+            keystr = kfile.read()
+            kfile.close()
+            key = RSA.importKey(keystr)
+            signer = PKCS1_v1_5.new(key)
+            digest = SHA256.new()
+            digest.update(sigMsg)
+            sign = signer.sign(digest)
+
+            # A|K|Timestamp!signature
+            msg = "" + str(self.manager.user_name) + str(key) + str(time) + str(sign)
+
+            # RSA encryption using public key of user
+            for person in RSAKeys:
+                if person["user_name"] == user:
+                    pubkey_file = person["RSA_public_key"]
+
+                    kfile = open(pubkey_file)
+                    keystr = kfile.read()
+                    kfile.close()
+
+                    pubkey = RSA.importKey(keystr)
+                    cipher = PKCS1_OAEP.new(pubkey)
+
+
+                    plength = 214 - (len(msg) % 214)
+                    buffer += chr(plength) * plength
+
+
+
+                    encoded_msg = cipher.encrypt(msg)
+
+
+            msgToSend = "BeginChatSetup" + user + self.manager.user_name + encoded_msg
+            self.process_outgoing_message(self, msgToSend)
+
+
         # for user in list_of_users:
         #     for person in RSAKeys:
         #         if person["user_name"] == user:
