@@ -113,78 +113,130 @@ class Conversation:
 
 # METHOD CALLED WHEN SOMEONE ENTERS A CONVERSATION 
     def setup_conversation(self):
+
         '''
         Prepares the conversation for usage
         :return:
         '''
-
         
         list_of_users = self.manager.get_other_users()
 
         # generate key
         key = "abc"
+        keystring="abc"
         #key = os.urandom(AES.block_size)
 
         for user in list_of_users:
-            #Begin  Chat   Setup   |   B   |   A   |   RSAEnc kB(  A   |   K   |   T a    |   Sig kA(  B   |   K   |   T a)  )
+             #BeginChatSetup|B|A|[Ta | PubEncKb(A|K) | Sigka(B|Ta|PubEnckB(A|K)]  )
 
-            #B|K|Timstamp of manager
-            time = datetime.datetime.now()
-            sigMsg = "" + str(user) + str(key) + str(time)
+             #PubEncKB(A|K)
+             # RSA encryption using public key of user
+             for person in RSAKeys:
+                 if person["user_name"] == user:
+                     pubkey_file = person["RSA_public_key"]
 
-            # Generate signature
-            kfile = open('private_keys/private_key_elon.pem')
-            keystr = kfile.read()
-            kfile.close()
-            key = RSA.importKey(keystr)
-            signer = PKCS1_v1_5.new(key)
-            digest = SHA256.new()
-            digest.update(sigMsg)
-            sign = signer.sign(digest)
+                     kfile = open(pubkey_file)
+                     keystr = kfile.read()
+                     kfile.close()
 
-            # A|K|Timestamp!signature
-            msg = "" + str(self.manager.user_name) + str(key) + str(time) + str(sign)
+                     pubkey = RSA.importKey(keystr)
+                     cipher = PKCS1_OAEP.new(pubkey)
 
-            # RSA encryption using public key of user
-            for person in RSAKeys:
-                if person["user_name"] == user:
-                    pubkey_file = person["RSA_public_key"]
+                     # plength = 214 - (len(msg) % 214)
+                     # msg += chr(plength) * plength
+                     msg = str(self.manager.user_name)+ str(keystring)
 
-                    kfile = open(pubkey_file)
-                    keystr = kfile.read()
-                    kfile.close()
+                     encoded_msg = cipher.encrypt(msg)
 
-                    pubkey = RSA.importKey(keystr)
-                    cipher = PKCS1_OAEP.new(pubkey)
+                     # B|Timstamp of manager|PubEncKB(A|K)
+                     time = datetime.datetime.now()
+                     msg_to_sign = str(user) + str(time) + encoded_msg
 
+                     # Generate signature
+                     kfile = open('private_keys/private_key_'+user+'.pem')
+                     keystr = kfile.read()
+                     kfile.close()
+                     key = RSA.importKey(keystr)
 
-                    plength = 214 - (len(msg) % 214)
-                    buffer += chr(plength) * plength
+                     signer = PKCS1_v1_5.new(key)
+                     digest = SHA256.new()
+                     digest.update(msg_to_sign)
+                     sign = signer.sign(digest)
 
-
-
-                    encoded_msg = cipher.encrypt(msg)
-
-
-            msgToSend = "BeginChatSetup" + user + self.manager.user_name + encoded_msg
-            self.process_outgoing_message(self, msgToSend)
+                     msg_to_send = "BeginChatSetup" + str(user) + str(self.manager.user_name) + str(time) + encoded_msg + sign
+                     self.process_outgoing_message(msg_to_send)
 
 
-        # for user in list_of_users:
-        #     for person in RSAKeys:
-        #         if person["user_name"] == user:
-        #             print person["RSA_public_key"]
-        #             print datetime.datetime.now()
+                     #
+             # # B|Timstamp of manager|PubEncKB(A|K)
+             # time = datetime.datetime.now()
+             # sigMsg = "" + str(user) + str(keystring) + str(time)
+             #
+             # # Generate signature
+             # kfile = open('private_keys/private_key_elon.pem')
+             # keystr = kfile.read()
+             # kfile.close()
+             # key = RSA.importKey(keystr)
+             #
+             # signer = PKCS1_v1_5.new(key)
+             # digest = SHA256.new()
+             # digest.update(sigMsg)
+             # sign = signer.sign(digest)
+             #
+             # # A|K|Timestamp!signature
+             # msg = "" + str(self.manager.user_name) + str(keystring) + str(time) + str(sign)
+             #
+             #
+             # # RSA encryption using public key of user
+             # buffer=""
+             # for person in RSAKeys:
+             #     if person["user_name"] == user:
+             #         pubkey_file = person["RSA_public_key"]
+             #
+             #         kfile = open(pubkey_file)
+             #         keystr = kfile.read()
+             #         kfile.close()
+             #
+             #         pubkey = RSA.importKey(keystr)
+             #         cipher = PKCS1_OAEP.new(pubkey)
+             #
+             #
+             #         #plength = 214 - (len(msg) % 214)
+             #         #msg += chr(plength) * plength
+             #         print len(msg)
+             #
+             #         msg1 = msg[0:214]
+             #         msg2 = msg[214:]
+             #
+             #
+             #         encoded_msg1 = cipher.encrypt(msg1)
+             #
+             #         encoded_msg2 = cipher.encrypt(msg2)
+             #
+             #
+             #
+             # msgToSend = "BeginChatSetup" + str(user) + str(self.manager.user_name) + str(encoded_msg1)
+             # msgToSend2 = "BeginChatSetup" + str(user) + str(self.manager.user_name) + str(encoded_msg2)
 
-        # You can use this function to initiate your key exchange
-        # Useful stuff that you may need:
-        # - name of the current user: self.manager.user_name
-        # - list of other users in the converstaion: list_of_users = self.manager.get_other_users()
-        # You may need to send some init message from this point of your code
-        # you can do that with self.process_outgoing_message("...") or whatever you may want to send here...
 
-        # Since there is no crypto in the current version, no preparation is needed, so do nothing
-        # replace this with anything needed for your key exchange 
+         # for user in list_of_users:
+         #     for person in RSAKeys:
+        # #         if person["user_name"] == user:
+        # #             print person["RSA_public_key"]
+        # #             print datetime.datetime.now()
+        #
+        # # You can use this function to initiate your key exchange
+        # # Useful stuff that you may need:
+        # # - name of the current user: self.manager.user_name
+        # # - list of other users in the converstaion: list_of_users = self.manager.get_other_users()
+        # # You may need to send some init message from this point of your code
+        # # you can do that with self.process_outgoing_message("...") or whatever you may want to send here...
+        #
+        # # Since there is no crypto in the current version, no preparation is needed, so do nothing
+        # # replace this with anything needed for your key exchange
+        #
+
+
         pass
 
 
@@ -205,23 +257,23 @@ class Conversation:
         
         #-----------------------------------------
         # getting the private key 
-        kfile = open('private_keys/private_key_elon.pem')
-        keystr = kfile.read()
-        kfile.close()
-        key = RSA.importKey(keystr)
-        cipher = PKCS1_OAEP.new(key)
+        # kfile = open('private_keys/private_key_elon.pem')
+        # keystr = kfile.read()
+        # kfile.close()
+        # key = RSA.importKey(keystr)
+        # cipher = PKCS1_OAEP.new(key)
 
         # decoding the message based on the private key
-        decoded_msg = cipher.decrypt(b64_decoded_msg)
+        #decoded_msg = cipher.decrypt(b64_decoded_msg)
 
         # remove padding
-        unpadded_msg = decoded_msg[:len(decoded_msg)-ord(decoded_msg[-1])]
+        # unpadded_msg = decoded_msg[:len(decoded_msg)-ord(decoded_msg[-1])]
 
         #-----------------------------------------
 
         # print message and add it to the list of printed messages
         self.print_message(
-            msg_raw=unpadded_msg,
+            msg_raw=b64_decoded_msg, #was previously unpadded_msg
             owner_str=owner_str
         )
 
@@ -245,33 +297,36 @@ class Conversation:
         # process outgoing message here
         
         #-----------------------------------------
-        encoded_msg = ""
+        # encoded_msg = ""
         
         # encode the message with the public RSA keys of the recipients
         list_of_users = self.manager.get_other_users()
         
-        buffer = msg_raw
+        # buffer = msg_raw
         # RSA block length is 2048 bits or 214 bytes
-        plength = 214 - (len(msg_raw)%214)
-        buffer += chr(plength)*plength
+        # print msg_raw
+
+        # plength = 214 - (len(msg_raw)%214)
+
+        # buffer += chr(plength)*plength
         
-        for person in RSAKeys:
-            if person["user_name"] == "Elon":
-                pubkey_file = person["RSA_public_key"]
+        # for person in RSAKeys:
+            # if person["user_name"] == "Elon":
+                #pubkey_file = person["RSA_public_key"]
 
-                kfile = open(pubkey_file)
-                keystr = kfile.read()
-                kfile.close()
+                #kfile = open(pubkey_file)
+                #keystr = kfile.read()
+                #kfile.close()
 
-                pubkey = RSA.importKey(keystr)
-                cipher = PKCS1_OAEP.new(pubkey)
+                #pubkey = RSA.importKey(keystr)
+                #cipher = PKCS1_OAEP.new(pubkey)
 
-                encoded_msg = cipher.encrypt(buffer)
+                #encoded_msg = cipher.encrypt(buffer)
             
         #-------------------------------------------
 
 		# example is base64 encoding, extend this with any crypto processing of your protocol
-        b64_encoded_msg = base64.encodestring(encoded_msg)
+        b64_encoded_msg = base64.encodestring(msg_raw) #was encoded_msg
 
         # post the message to the conversation
         self.manager.post_message_to_conversation(b64_encoded_msg)
