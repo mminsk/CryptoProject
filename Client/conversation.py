@@ -119,104 +119,56 @@ class Conversation:
         :return:
         '''
         
-        list_of_users = self.manager.get_other_users()
+        # list_of_users = self.manager.get_other_users()
+        #
+        # # generate key
+        # key = "abc"
+        # keystring="abc"
+        # #key = os.urandom(AES.block_size)
+        #
+        # for user in list_of_users:
+        #      #BeginChatSetup|B|A|[Ta | PubEncKb(A|K) | Sigka(B|Ta|PubEnckB(A|K)]  )
+        #
+        #      #PubEncKB(A|K)
+        #      # RSA encryption using public key of user
+        #      for person in RSAKeys:
+        #          if person["user_name"] == user:
+        #              pubkey_file = person["RSA_public_key"]
+        #
+        #              kfile = open(pubkey_file)
+        #              keystr = kfile.read()
+        #              kfile.close()
+        #
+        #              pubkey = RSA.importKey(keystr)
+        #              cipher = PKCS1_OAEP.new(pubkey)
+        #
+        #              # plength = 214 - (len(msg) % 214)
+        #              # msg += chr(plength) * plength
+        #              msg = str(self.manager.user_name)+ str(keystring)
+        #
+        #              encoded_msg = cipher.encrypt(msg)
+        #
+        #              # B|Timstamp of manager|PubEncKB(A|K)
+        #              time = datetime.datetime.now()
+        #              msg_to_sign = str(user) + str(time) + encoded_msg
+        #
+        #              # Generate signature
+        #              kfile = open('private_keys/private_key_'+user+'.pem')
+        #              keystr = kfile.read()
+        #              kfile.close()
+        #              key = RSA.importKey(keystr)
+        #
+        #              signer = PKCS1_v1_5.new(key)
+        #              digest = SHA256.new()
+        #              digest.update(msg_to_sign)
+        #              sign = signer.sign(digest)
+        #
+        #              msg_to_send = "BeginChatSetup" + str(user) + str(self.manager.user_name) + str(time) + encoded_msg + sign
+        #              print "before outgoing message"
+        #              print msg_to_send
+        #              self.process_outgoing_message(msg_to_send)
 
-        # generate key
-        key = "abc"
-        keystring="abc"
-        #key = os.urandom(AES.block_size)
 
-        for user in list_of_users:
-             #BeginChatSetup|B|A|[Ta | PubEncKb(A|K) | Sigka(B|Ta|PubEnckB(A|K)]  )
-
-             #PubEncKB(A|K)
-             # RSA encryption using public key of user
-             for person in RSAKeys:
-                 if person["user_name"] == user:
-                     pubkey_file = person["RSA_public_key"]
-
-                     kfile = open(pubkey_file)
-                     keystr = kfile.read()
-                     kfile.close()
-
-                     pubkey = RSA.importKey(keystr)
-                     cipher = PKCS1_OAEP.new(pubkey)
-
-                     # plength = 214 - (len(msg) % 214)
-                     # msg += chr(plength) * plength
-                     msg = str(self.manager.user_name)+ str(keystring)
-
-                     encoded_msg = cipher.encrypt(msg)
-
-                     # B|Timstamp of manager|PubEncKB(A|K)
-                     time = datetime.datetime.now()
-                     msg_to_sign = str(user) + str(time) + encoded_msg
-
-                     # Generate signature
-                     kfile = open('private_keys/private_key_'+user+'.pem')
-                     keystr = kfile.read()
-                     kfile.close()
-                     key = RSA.importKey(keystr)
-
-                     signer = PKCS1_v1_5.new(key)
-                     digest = SHA256.new()
-                     digest.update(msg_to_sign)
-                     sign = signer.sign(digest)
-
-                     msg_to_send = "BeginChatSetup" + str(user) + str(self.manager.user_name) + str(time) + encoded_msg + sign
-                     self.process_outgoing_message(msg_to_send)
-
-
-                     #
-             # # B|Timstamp of manager|PubEncKB(A|K)
-             # time = datetime.datetime.now()
-             # sigMsg = "" + str(user) + str(keystring) + str(time)
-             #
-             # # Generate signature
-             # kfile = open('private_keys/private_key_elon.pem')
-             # keystr = kfile.read()
-             # kfile.close()
-             # key = RSA.importKey(keystr)
-             #
-             # signer = PKCS1_v1_5.new(key)
-             # digest = SHA256.new()
-             # digest.update(sigMsg)
-             # sign = signer.sign(digest)
-             #
-             # # A|K|Timestamp!signature
-             # msg = "" + str(self.manager.user_name) + str(keystring) + str(time) + str(sign)
-             #
-             #
-             # # RSA encryption using public key of user
-             # buffer=""
-             # for person in RSAKeys:
-             #     if person["user_name"] == user:
-             #         pubkey_file = person["RSA_public_key"]
-             #
-             #         kfile = open(pubkey_file)
-             #         keystr = kfile.read()
-             #         kfile.close()
-             #
-             #         pubkey = RSA.importKey(keystr)
-             #         cipher = PKCS1_OAEP.new(pubkey)
-             #
-             #
-             #         #plength = 214 - (len(msg) % 214)
-             #         #msg += chr(plength) * plength
-             #         print len(msg)
-             #
-             #         msg1 = msg[0:214]
-             #         msg2 = msg[214:]
-             #
-             #
-             #         encoded_msg1 = cipher.encrypt(msg1)
-             #
-             #         encoded_msg2 = cipher.encrypt(msg2)
-             #
-             #
-             #
-             # msgToSend = "BeginChatSetup" + str(user) + str(self.manager.user_name) + str(encoded_msg1)
-             # msgToSend2 = "BeginChatSetup" + str(user) + str(self.manager.user_name) + str(encoded_msg2)
 
 
          # for user in list_of_users:
@@ -236,54 +188,45 @@ class Conversation:
         # # replace this with anything needed for your key exchange
         #
 
+        self.process_outgoing_message("hello", Tre)
 
         pass
 
 
     def process_incoming_message(self, msg_raw, msg_id, owner_str):
         '''
-        Process incoming messages
-        :param msg_raw: the raw message
-        :param msg_id: ID of the message
-        :param owner_str: user name of the user who posted the message
-        :param user_name: name of the current user
-        :param print_all: is the message part of the conversation history?
-        :return: None
-        '''
+                Process incoming messages
+                :param msg_raw: the raw message
+                :param msg_id: ID of the message
+                :param owner_str: user name of the user who posted the message
+                :param user_name: name of the current user
+                :param print_all: is the message part of the conversation history?
+                :return: None
+                '''
+
+        print "in incoming message"
+
 
         # process message here
-		# example is base64 decoding, extend this with any crypto processing of your protocol
-        b64_decoded_msg = base64.decodestring(msg_raw)
-        
-        #-----------------------------------------
-        # getting the private key 
-        # kfile = open('private_keys/private_key_elon.pem')
-        # keystr = kfile.read()
-        # kfile.close()
-        # key = RSA.importKey(keystr)
-        # cipher = PKCS1_OAEP.new(key)
-
-        # decoding the message based on the private key
-        #decoded_msg = cipher.decrypt(b64_decoded_msg)
-
-        # remove padding
-        # unpadded_msg = decoded_msg[:len(decoded_msg)-ord(decoded_msg[-1])]
-
-        #-----------------------------------------
+        # example is base64 decoding, extend this with any crypto processing of your protocol
+        decoded_msg = base64.decodestring(msg_raw)
 
         # print message and add it to the list of printed messages
         self.print_message(
-            msg_raw=b64_decoded_msg, #was previously unpadded_msg
+            msg_raw=decoded_msg,
             owner_str=owner_str
         )
 
     def process_outgoing_message(self, msg_raw, originates_from_console=False):
         '''
-        Process an outgoing message before Base64 encoding
+                Process an outgoing message before Base64 encoding
 
-        :param msg_raw: raw message
-        :return: message to be sent to the server
-        '''
+                :param msg_raw: raw message
+                :return: message to be sent to the server
+                '''
+
+        print "in outgoing message"
+
 
         # if the message has been typed into the console, record it, so it is never printed again during chatting
         if originates_from_console == True:
@@ -294,42 +237,12 @@ class Conversation:
             )
             self.printed_messages.append(m)
 
-        # process outgoing message here
-        
-        #-----------------------------------------
-        # encoded_msg = ""
-        
-        # encode the message with the public RSA keys of the recipients
-        list_of_users = self.manager.get_other_users()
-        
-        # buffer = msg_raw
-        # RSA block length is 2048 bits or 214 bytes
-        # print msg_raw
-
-        # plength = 214 - (len(msg_raw)%214)
-
-        # buffer += chr(plength)*plength
-        
-        # for person in RSAKeys:
-            # if person["user_name"] == "Elon":
-                #pubkey_file = person["RSA_public_key"]
-
-                #kfile = open(pubkey_file)
-                #keystr = kfile.read()
-                #kfile.close()
-
-                #pubkey = RSA.importKey(keystr)
-                #cipher = PKCS1_OAEP.new(pubkey)
-
-                #encoded_msg = cipher.encrypt(buffer)
-            
-        #-------------------------------------------
-
-		# example is base64 encoding, extend this with any crypto processing of your protocol
-        b64_encoded_msg = base64.encodestring(msg_raw) #was encoded_msg
+            # process outgoing message here
+        # example is base64 encoding, extend this with any crypto processing of your protocol
+        encoded_msg = base64.encodestring(msg_raw)
 
         # post the message to the conversation
-        self.manager.post_message_to_conversation(b64_encoded_msg)
+        self.manager.post_message_to_conversation(encoded_msg)
 
     def print_message(self, msg_raw, owner_str):
         '''
