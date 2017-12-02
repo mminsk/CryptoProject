@@ -141,6 +141,11 @@ class Conversation:
         Prepares the conversation for usage
         :return:
         '''
+
+        if not os.path.exists("send_states"):
+            os.makedirs("send_states")
+
+        
         
         # list_of_users = self.manager.get_other_users()
         #
@@ -248,24 +253,28 @@ class Conversation:
         # create array to store rcv sequences 
         num_other_users = len(self.manager.get_other_users())
 
-        sequences = [None] * num_other_users
+        # sequences = [None] * num_other_users
+        sequences = {}
 
-        # find appropriate conversation 
+        # read in rcv sequences
         line = ifile.readline()
         i = 0
 
-        #CHANGE TO BE WHILE LINE != NONE
         rcvsqn = 0
-        while(line < num_other_users):
+        while(i < num_other_users):
+
+            print line[1:4]
+            print owner_str[1:4]
+
             if (line[1:4] == owner_str[1:4]):
                 rcvsqn = line[len("0000_rcv: "):]
                 print rcvsqn
                 rcvsqn = long(rcvsqn)
-                sequences[i] = rcvsqn + 1
+                sequences[line[:4]] = rcvsqn + 1
             else:
                 rcvsqnHolder = line[len("0000_rcv: "):]
                 rcvsqnHolder = long(rcvsqnHolder)
-                sequences[i] = rcvsqnHolder
+                sequences[line[:4]] = rcvsqnHolder
 
             line = ifile.readline()
             i += 1
@@ -352,7 +361,7 @@ class Conversation:
         i = 0
         for user in list_of_users:
             print "USER STRING:" + str(user[:4])
-            state = state + str(user[:4]) + "_rcv: " + str(sequences[i]) + '\r\n'
+            state = state + str(user[:4]) + "_rcv: " + str(sequences[user[:4]]) + '\r\n'
             i += 1
 
         ofile = open(statefile, 'wb')
@@ -397,7 +406,7 @@ class Conversation:
         # create array to store send sequences 
         num_other_users = len(self.manager.get_other_users())
 
-        sequences = [None] * num_other_users
+        sequences = {}
 
         line = ifile.readline()
         i = 0
@@ -407,7 +416,9 @@ class Conversation:
             sndsqn = line[len("0000_snd: "):]
             print sndsqn
             sndsqn = long(sndsqn)
-            sequences[i] = sndsqn
+            # assign sequence number to user in dictionary 
+            sequences[line[:4]] = sndsqn
+            print line[:4] + " = " + str(sndsqn)
 
             line = ifile.readline()
             i += 1
@@ -472,7 +483,7 @@ class Conversation:
             userStr = str(user)
             userStr = userStr[:4]
             print userStr
-            state = state + userStr + "_snd: " + str(sequences[i] + 1) + '\r\n'
+            state = state + userStr + "_snd: " + str(sequences[userStr] + 1) + '\r\n'
             i += 1  
 
         ofile = open(statefile, 'wb')
