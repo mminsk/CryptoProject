@@ -244,8 +244,11 @@ class Conversation:
         mackey = self.hex_to_bin(mackey)
 
         # getting receive sequences
-        # MAKE THIS ARRAY ADJUSTABLE
-        sequences = [None] * 10
+
+        # create array to store rcv sequences 
+        num_other_users = len(self.manager.get_other_users())
+
+        sequences = [None] * num_other_users
 
         # find appropriate conversation 
         line = ifile.readline()
@@ -253,7 +256,7 @@ class Conversation:
 
         #CHANGE TO BE WHILE LINE != NONE
         rcvsqn = 0
-        while(line != ''):
+        while(line < num_other_users):
             if (line[1:4] == owner_str[1:4]):
                 rcvsqn = line[len("0000_rcv: "):]
                 print rcvsqn
@@ -349,7 +352,7 @@ class Conversation:
         i = 0
         for user in list_of_users:
             print "USER STRING:" + str(user[:4])
-            state = state + str(user[:4]) + "_snd: " + str(sequences[i]) + '\r\n'
+            state = state + str(user[:4]) + "_rcv: " + str(sequences[i]) + '\r\n'
             i += 1
 
         ofile = open(statefile, 'wb')
@@ -391,16 +394,16 @@ class Conversation:
         mackey = line[len("mackey: "):len("mackey: ")+32]
         mackey = self.hex_to_bin(mackey)
 
-        # getting send sequences
-        # MAKE THIS ARRAY ADJUSTABLE
-        sequences = [None] * 10
+        # create array to store send sequences 
+        num_other_users = len(self.manager.get_other_users())
 
-        # find appropriate conversation 
+        sequences = [None] * num_other_users
+
         line = ifile.readline()
         i = 0
 
-        #CHANGE TO BE WHILE LINE != NONE
-        while(i < 3):
+        # get send sequenses from the state file 
+        while(i < num_other_users):
             sndsqn = line[len("0000_snd: "):]
             print sndsqn
             sndsqn = long(sndsqn)
