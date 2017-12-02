@@ -142,10 +142,44 @@ class Conversation:
         :return:
         '''
 
+        # get conversation specifics 
+        users = self.manager.get_other_users()
+        manager_name = self.manager.user_name
+        conversationID = self.id
+        enckey = "0123456789abcdef0123456789abcdef"
+        mackey= "fedcba9876543210fedcba9876543210"
+
+        # create send states directory 
         if not os.path.exists("send_states"):
             os.makedirs("send_states")
 
-        
+        # open and write send states file
+        file = open("send_states/" + str(manager_name) + "_" + str(conversationID) + "_sndstates.txt",'w')
+
+        file.write("enckey: " + enckey + "\n")
+        file.write("mackey: " + mackey)
+        for user in users:
+            if user != manager_name:
+                file.write("\n")
+                file.write(user[:4] + "_snd: 0")
+        file.close()
+
+
+        # create receive states file
+        if not os.path.exists("receive_states"):
+            os.makedirs("receive_states")
+
+        file = open("receive_states/" + str(manager_name) + "_"+ str(conversationID) + "_" + "rcvstates.txt",'w')
+
+        file.write("enckey: " + enckey + "\n")
+        file.write("mackey: " + mackey)
+        for user in users:
+            if user != manager_name:
+                file.write("\n")
+                file.write(user[:4] + "_rcv: 0")
+        file.close()
+
+
         
         # list_of_users = self.manager.get_other_users()
         #
@@ -239,7 +273,7 @@ class Conversation:
 
         print "in incoming message"
 
-        statefile = 'receive_states/' + str(self.manager.user_name) + '_1234_rcvstates.txt'
+        statefile = 'receive_states/' + str(self.manager.user_name) + '_' + str(self.id) + '_rcvstates.txt'
         ifile = open(statefile, 'rb')
         line = ifile.readline()
         enckey = line[len("enckey: "):len("enckey: ")+32]
@@ -394,7 +428,7 @@ class Conversation:
 
         # read the content of the state file to get keys
         # REPLACE 1234 WITH SELF.MANAGER.CONVERSATION_ID ONCE SETUP CONVERSATION WORKS
-        statefile = 'send_states/' + str(self.manager.user_name) + '_1234_sndstates.txt'
+        statefile = 'send_states/' + str(self.manager.user_name) + '_' + str(self.id) + '_sndstates.txt'
         ifile = open(statefile, 'rb')
         line = ifile.readline()
         enckey = line[len("enckey: "):len("enckey: ")+32]

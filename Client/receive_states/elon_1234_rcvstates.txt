@@ -1,5 +1,0 @@
-enckey: 0123456789abcdef0123456789abcdef
-mackey: fedcba9876543210fedcba9876543210
-elon_rcv: 0
-bill_rcv: 0
-stev_rcv: 0
