@@ -9,6 +9,7 @@ import datetime
 from Crypto.PublicKey import RSA
 from Crypto.Signature import PKCS1_v1_5
 from Crypto.Hash import SHA256
+from Crypto.Hash import HMAC
 from base64 import b64encode, b64decode
 from Crypto import Random
 import sys, getopt
@@ -19,7 +20,10 @@ from base64 import b64encode
 from base64 import b64decode
 import os
 
+
 class Conversation:
+
+
     '''
     Represents a conversation between participants
     '''
@@ -43,6 +47,25 @@ class Conversation:
         ) # message processing loop
         self.msg_process_loop.start()
         self.msg_process_loop_started = True
+
+    # convert a hex string h to a binary string
+    def hex_to_bin(self, h):
+        if (len(h)%2 == 1):
+            h = '0' + h
+        length = len(h)//2
+        b = ""
+        for i in range(length):
+            c = h[2*i:2*i+2]
+            b += chr(int(c, 16))
+        return b
+
+    # convert an integer n (int or long) to binary representation encoded on w bytes 
+    def int_to_bin(self, n, w):
+        b = ""
+        for i in range(w):
+            b = chr(n%256) + b
+            n = n//256
+        return b
 
     def append_msg_to_process(self, msg_json):
         '''
@@ -188,7 +211,7 @@ class Conversation:
         # # replace this with anything needed for your key exchange
         #
 
-        self.process_outgoing_message("hello", Tre)
+        # self.process_outgoing_message("hello", Tre)
 
         pass
 
@@ -204,42 +227,271 @@ class Conversation:
                 :return: None
                 '''
 
-        print "in incoming message"
-
-
         # process message here
         # example is base64 decoding, extend this with any crypto processing of your protocol
-        decoded_msg = base64.decodestring(msg_raw)
+        msg = base64.decodestring(msg_raw)
+        # --------------------- MEL EDITS --------------------------------------
+
+        print "in incoming message"
+
+        statefile = 'receive_states/' + str(self.manager.user_name) + '_1234_rcvstates.txt'
+        ifile = open(statefile, 'rb')
+        line = ifile.readline()
+        enckey = line[len("enckey: "):len("enckey: ")+32]
+        enckey = self.hex_to_bin(enckey)
+        line = ifile.readline()
+        mackey = line[len("mackey: "):len("mackey: ")+32]
+        mackey = self.hex_to_bin(mackey)
+
+        # getting receive sequences
+        # MAKE THIS ARRAY ADJUSTABLE
+        sequences = [None] * 10
+
+        # find appropriate conversation 
+        line = ifile.readline()
+        i = 0
+
+        #CHANGE TO BE WHILE LINE != NONE
+        rcvsqn = 0
+        while(line != ''):
+            if (line[1:4] == owner_str[1:4]):
+                rcvsqn = line[len("0000_rcv: "):]
+                print rcvsqn
+                rcvsqn = long(rcvsqn)
+                sequences[i] = rcvsqn + 1
+            else:
+                rcvsqnHolder = line[len("0000_rcv: "):]
+                rcvsqnHolder = long(rcvsqnHolder)
+                sequences[i] = rcvsqnHolder
+
+            line = ifile.readline()
+            i += 1
+         
+        ifile.close()
+        # rcvsqn holds the number to be compared to the message number 
+
+
+        # parse the message
+        header_length = 9                                          # header is 9 bytes long
+        header = msg[0:header_length]
+        iv = msg[header_length:header_length+AES.block_size]       # iv is AES.block_size bytes long
+        mac_length = 32                                            # SHA256 hash is 32 bytes long
+        encrypted = msg[header_length+AES.block_size:-mac_length]  # encrypted part is between iv and mac
+        mac = msg[-mac_length:]                                    # last mac_length bytes form the mac
+        header_version = header[0:2]        # version is encoded on 2 bytes 
+        header_type = header[2:3]           # type is encoded on 1 byte 
+        header_length = header[3:5]         # msg length is encoded on 2 bytes 
+        header_sqn = header[5:9]            # msg sqn is encoded on 4 bytes 
+
+
+        # checking
+        print "Message header:"
+        print "   - protocol version: " + header_version.encode("hex") + " (" + str(int(header_version[0].encode("hex"),16)) + "." + str(int(header_version[1].encode("hex"),16)) + ")"
+        print "   - message type: " + header_type.encode("hex") + " (" + str(int(header_type.encode("hex"),16)) + ")"
+        print "   - message length: " + header_length.encode("hex") + " (" + str(int(header_length.encode("hex"),16)) + ")"
+        print "   - message sequence number: " + header_sqn.encode("hex") + " (" + str(long(header_sqn.encode("hex"),16)) + ")"
+
+
+        # check the msg length
+        if (len(msg) != int(header_length.encode("hex"), 16)):
+            print "Warning: Message length value in header is wrong!"
+            print "Processing is continued nevertheless..."
+
+        # check the sequence number
+        print "Expecting sequence number " + str(rcvsqn + 1) + " or larger..."
+        sndsqn = long(header_sqn.encode("hex"), 16)
+        if (sndsqn <= rcvsqn):
+            print "Error: Message sequence number is too old!"
+            print "Processing completed."
+            sys.exit(1)    
+        print "Sequence number verification is successful."
+
+        # verify the mac
+        print "MAC verification is being performed..."
+        H = SHA256.new()
+        MAC = HMAC.new(mackey, digestmod = H)
+        MAC.update(header)
+        MAC.update(iv)
+        MAC.update(encrypted)
+        comp_mac = MAC.digest()
+
+        print "MAC value received: " + mac.encode("hex")
+        print "MAC value computed: " + comp_mac.encode("hex")
+        if (comp_mac != mac):
+            print "Error: MAC verification failed!"
+            print "Processing completed."
+            sys.exit(1)
+        print "MAC verified correctly."
+
+        # decrypt the encrypted part
+        print "Decryption is attempted..."
+        ENC = AES.new(enckey, AES.MODE_CBC, iv)
+        decrypted = ENC.decrypt(encrypted)
+
+        # remove and check padding
+        i = -1
+        while (decrypted[i] == '\x00'): i -= 1
+        padding = decrypted[i:]
+        payload = decrypted[:i]
+        print "Padding " + padding.encode("hex") + " is observed."
+        if (padding[0] != '\x01'):
+            print "Error: Wrong padding detected!"
+            print "Processing completed."
+            sys.exit(1)
+        print "Padding is successfully removed."
+
+
+        # save state 
+        state = "enckey: " + enckey.encode("hex") + '\r\n'
+        state = state + "mackey: " + mackey.encode("hex") + '\r\n'
+
+        list_of_users = self.manager.get_other_users()
+        i = 0
+        for user in list_of_users:
+            print "USER STRING:" + str(user[:4])
+            state = state + str(user[:4]) + "_snd: " + str(sequences[i]) + '\r\n'
+            i += 1
+
+        ofile = open(statefile, 'wb')
+        ofile.write(state)
+        ofile.close()
+
+
+        # ------------------------ END MEL -----------------------------------
+
+
 
         # print message and add it to the list of printed messages
         self.print_message(
-            msg_raw=decoded_msg,
+            msg_raw=payload,
             owner_str=owner_str
         )
 
     def process_outgoing_message(self, msg_raw, originates_from_console=False):
         '''
-                Process an outgoing message before Base64 encoding
+        Process an outgoing message before Base64 encoding
 
-                :param msg_raw: raw message
-                :return: message to be sent to the server
-                '''
+        :param msg_raw: raw message
+        :return: message to be sent to the server
 
+        '''
+
+
+        # --------------------- MEL EDITS --------------------------------------
         print "in outgoing message"
 
+        # read the content of the state file to get keys
+        # REPLACE 1234 WITH SELF.MANAGER.CONVERSATION_ID ONCE SETUP CONVERSATION WORKS
+        statefile = 'send_states/' + str(self.manager.user_name) + '_1234_sndstates.txt'
+        ifile = open(statefile, 'rb')
+        line = ifile.readline()
+        enckey = line[len("enckey: "):len("enckey: ")+32]
+        enckey = self.hex_to_bin(enckey)
+        line = ifile.readline()
+        mackey = line[len("mackey: "):len("mackey: ")+32]
+        mackey = self.hex_to_bin(mackey)
+
+        # getting send sequences
+        # MAKE THIS ARRAY ADJUSTABLE
+        sequences = [None] * 10
+
+        # find appropriate conversation 
+        line = ifile.readline()
+        i = 0
+
+        #CHANGE TO BE WHILE LINE != NONE
+        while(i < 3):
+            sndsqn = line[len("0000_snd: "):]
+            print sndsqn
+            sndsqn = long(sndsqn)
+            sequences[i] = sndsqn
+
+            line = ifile.readline()
+            i += 1
+         
+        ifile.close()
+
+
+        #set payload 
+        payload = msg_raw
+
+        # compute padding
+        payload_length = len(payload)
+        padding_length = AES.block_size - payload_length%AES.block_size
+        padding = chr(1) + chr(0)*(padding_length-1)
+
+        mac_length = 32  # SHA256 hash value is 32 bytes long
+
+        # compute message length...
+        # header: 9 bytes
+        #    version: 2 bytes
+        #    type:    1 btye
+        #    length:  2 btyes
+        #    sqn:     4 bytes
+        # iv: AES.block_size
+        # payload: payload_length
+        # padding: padding_length
+        # mac: mac_length
+        msg_length = 9 + AES.block_size + payload_length + padding_length + mac_length
+
+        # create header
+        header_version = "\x04\x06"                # protocol version 4.6
+        header_type = "\x01"                       # message type 1
+        header_length = self.int_to_bin(msg_length, 2)  # message length (encoded on 2 bytes)
+        header_sqn = self.int_to_bin(sndsqn + 1, 4)     # next message sequence number (encoded on 4 bytes)
+        header = header_version + header_type + header_length + header_sqn 
+
+        # encrypt what needs to be encrypted (payload + padding)
+        iv = Random.new().read(AES.block_size)
+        ENC = AES.new(enckey, AES.MODE_CBC, iv)
+        encrypted = ENC.encrypt(payload + padding)
+
+        # compute mac on header and encrypted payload
+        H = SHA256.new()
+        MAC = HMAC.new(mackey, digestmod = H)
+        MAC.update(header)
+        MAC.update(iv)
+        MAC.update(encrypted)
+        mac = MAC.digest()
+
+        processed_msg = header + iv + encrypted + mac
+
+
+        # save state
+
+        state = "enckey: " + enckey.encode("hex") + '\r\n'
+        state = state + "mackey: " + mackey.encode("hex") + '\r\n'
+
+        list_of_users = self.manager.get_other_users()
+
+        i = 0
+        for user in list_of_users:
+            userStr = str(user)
+            userStr = userStr[:4]
+            print userStr
+            state = state + userStr + "_snd: " + str(sequences[i] + 1) + '\r\n'
+            i += 1  
+
+        ofile = open(statefile, 'wb')
+        ofile.write(state)
+        ofile.close()
+
+
+
+        # ------------------------ END MEL -----------------------------------
 
         # if the message has been typed into the console, record it, so it is never printed again during chatting
         if originates_from_console == True:
             # message is already seen on the console
             m = Message(
                 owner_name=self.manager.user_name,
-                content=msg_raw
+                content=processed_msg
             )
             self.printed_messages.append(m)
 
             # process outgoing message here
         # example is base64 encoding, extend this with any crypto processing of your protocol
-        encoded_msg = base64.encodestring(msg_raw)
+        encoded_msg = base64.encodestring(processed_msg)
 
         # post the message to the conversation
         self.manager.post_message_to_conversation(encoded_msg)
