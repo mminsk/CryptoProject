@@ -134,15 +134,12 @@ class Conversation:
                 sleep(0.01)
 
 
-
-# METHOD CALLED WHEN SOMEONE ENTERS A CONVERSATION 
     def setup_conversation(self):
 
         '''
         Prepares the conversation for usage
-        :return:
+        Creates send state files, receive state files, key state files 
         '''
-
         self.needs_key = True
 
         # get conversation specifics 
@@ -158,13 +155,10 @@ class Conversation:
 
         # open and write send states file
         file = open("send_states/" + str(manager_name) + "_" + str(conversationID) + "_sndstates.txt",'w')
-
-        file.write("enckey: " + enckey + "\n")
-        file.write("mackey: " + mackey)
         for user in users:
             if user != manager_name:
-                file.write("\n")
                 file.write(user[:4] + "_snd: 0")
+                file.write("\n")
         file.close()
 
 
@@ -174,13 +168,20 @@ class Conversation:
 
         file = open("receive_states/" + str(manager_name) + "_"+ str(conversationID) + "_" + "rcvstates.txt",'w')
 
-        file.write("enckey: " + enckey + "\n")
-        file.write("mackey: " + mackey)
         for user in users:
             if user != manager_name:
-                file.write("\n")
                 file.write(user[:4] + "_rcv: 0")
+                file.write("\n")
         file.close()
+
+
+        # create key states file
+        if not os.path.exists("key_states"):
+            os.makedirs("key_states")
+
+        file = open("key_states/" + str(manager_name) + "_" + str(conversationID) + "_" + "keystates.txt", 'w')
+        file.write("enckey: " + enckey + "\n")
+        file.write("mackey: " + mackey)
 
 
 
@@ -211,13 +212,11 @@ class Conversation:
                 :return: None
                 '''
 
-        # process message here
-        # example is base64 decoding, extend this with any crypto processing of your protocol
+        # process message 
         msg = base64.decodestring(msg_raw)
         # --------------------- MEL EDITS --------------------------------------
 
         print "in incoming message"
-        print msg[0:14]
 
         if (msg[0:14] == "BeginChatSetup"):
             print "in begin chat setup"
@@ -278,6 +277,15 @@ class Conversation:
                     file = open(self.manager.user_name + "_shared_secrets/" + str(self.id) + ".txt", 'w')
 
                     file.write("shared secret: " + shared_secret)
+                    file.close()
+
+                    # THIS IS HOW YOU UPDATE THE KEY FILES ONCE THEY ARE GENERATED FROM THE SHARED SECRET 
+                    #keyfile = open("key_states/" + str(manager_name) + "_" + str(conversationID) + "_" + "keystates.txt", 'w')
+                    #keyfile.write("enckey: " + "enc key here" + "\n")
+                    #keyfile.write("mackey: " + "mac key here")
+                    #keyfile.close()
+
+
 
                 else:
                     print "conversation not created"
@@ -291,16 +299,18 @@ class Conversation:
 
 
         else:
-            statefile = 'receive_states/' + str(self.manager.user_name) + '_' + str(self.id) + '_rcvstates.txt'
-            ifile = open(statefile, 'rb')
+
+            # getting enc and mac keys 
+            keyfile = 'key_states/' + str(self.manager.user_name) + '_' + str(self.id) + '_keystates.txt'
+            ifile = open(keyfile, 'rb')
             line = ifile.readline()
             enckey = line[len("enckey: "):len("enckey: ") + 32]
             enckey = self.hex_to_bin(enckey)
             line = ifile.readline()
             mackey = line[len("mackey: "):len("mackey: ") + 32]
             mackey = self.hex_to_bin(mackey)
+            ifile.close()
 
-            # getting receive sequences
 
              # create array to store rcv sequences
             num_other_users = len(self.manager.get_other_users())
@@ -309,6 +319,8 @@ class Conversation:
             sequences = {}
 
             # read in rcv sequences
+            statefile = 'receive_states/' + str(self.manager.user_name) + '_' + str(self.id) + '_rcvstates.txt'
+            ifile = open(statefile, 'rb')
             line = ifile.readline()
             i = 0
 
@@ -399,11 +411,9 @@ class Conversation:
             print "Padding is successfully removed."
 
             # save state
-            state = "enckey: " + enckey.encode("hex") + '\r\n'
-            state = state + "mackey: " + mackey.encode("hex") + '\r\n'
-
             list_of_users = self.manager.get_other_users()
             i = 0
+            state = ""
             for user in list_of_users:
                 state = state + str(user[:4]) + "_rcv: " + str(sequences[user[:4]]) + '\r\n'
                 i += 1
@@ -438,8 +448,6 @@ class Conversation:
         :return: message to be sent to the server
 
         '''
-
-
         # --------------------- MEL EDITS --------------------------------------
         print "in outgoing message"
 
@@ -508,25 +516,32 @@ class Conversation:
 
                         #PUT THIS KEY IN STATE FILE
 
+                        #file = open("key_states/" + str(manager_name) + "_" + str(conversationID) + "_" + "keystates.txt", 'w')
+                        #file.write("enckey: " + enckey + "\n")
+                        #file.write("mackey: " + mackey)
+                        #file.close()
 
 
 
-        # read the content of the state file to get keys
-        # REPLACE 1234 WITH SELF.MANAGER.CONVERSATION_ID ONCE SETUP CONVERSATION WORKS
-        statefile = 'send_states/' + str(self.manager.user_name) + '_' + str(self.id) + '_sndstates.txt'
-        ifile = open(statefile, 'rb')
+
+        # read the content of the key file to get keys
+        keyfile = 'key_states/' + str(self.manager.user_name) + '_' + str(self.id) + '_keystates.txt'
+        ifile = open(keyfile, 'rb')
         line = ifile.readline()
-        enckey = line[len("enckey: "):len("enckey: ")+32]
+        enckey = line[len("enckey: "):len("enckey: ") + 32]
         enckey = self.hex_to_bin(enckey)
         line = ifile.readline()
-        mackey = line[len("mackey: "):len("mackey: ")+32]
+        mackey = line[len("mackey: "):len("mackey: ") + 32]
         mackey = self.hex_to_bin(mackey)
+        ifile.close()
 
         # create array to store send sequences
         num_other_users = len(self.manager.get_other_users())
 
         sequences = {}
 
+        statefile = 'send_states/' + str(self.manager.user_name) + '_' + str(self.id) + '_sndstates.txt'
+        ifile = open(statefile, 'rb')
         line = ifile.readline()
         i = 0
 
@@ -588,12 +603,8 @@ class Conversation:
 
 
         # save state
-
-        state = "enckey: " + enckey.encode("hex") + '\r\n'
-        state = state + "mackey: " + mackey.encode("hex") + '\r\n'
-
         list_of_users = self.manager.get_other_users()
-
+        state = ""
         i = 0
         for user in list_of_users:
             userStr = str(user)
