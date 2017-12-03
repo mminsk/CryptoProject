@@ -1,8 +1,9 @@
 import base64
 
 import datetime
+import os
 
-from Crypto.Cipher import PKCS1_OAEP
+from Crypto.Cipher import PKCS1_OAEP, AES
 from Crypto.Hash import SHA256
 from Crypto.PublicKey import RSA
 from Crypto.Signature import PKCS1_v1_5
@@ -10,10 +11,11 @@ from Crypto.Signature import PKCS1_v1_5
 from RSA_pub_keys import RSAKeys
 
 
-            #generate key
-key = "0123456789abcdef0123456789abcdef"
+#generate key
+#key = "0123456789abcdef0123456789abcdef"
 keystring = "0123456789abcdef0123456789abcdef"
-# key = os.urandom(AES.block_size)
+#key = os.urandom(AES.block_size)
+#print "this is random key" + key
 
 # BeginChatSetup|B|A|[Ta | PubEncKb(A|K) | Sigka(B|Ta|PubEnckB(A|K)]  )
 

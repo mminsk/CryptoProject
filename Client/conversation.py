@@ -217,17 +217,70 @@ class Conversation:
         # --------------------- MEL EDITS --------------------------------------
 
         print "in incoming message"
-        #print base64.decodestring(msg_raw)
         print msg[0:14]
 
         if (msg[0:14] == "BeginChatSetup"):
             print "in begin chat setup"
-            # print message and add it to the list of printed messages
-            self.print_message(
-                msg_raw=msg,
-               owner_str=owner_str
-            )
-            self.needs_key = False
+
+            # BeginChatSetup|B|A|[Ta | PubEncKb(A|K) | Sigka(B|Ta|PubEnckB(A|K)]
+            len_msg = len(msg)
+            header = msg[0:14]
+            name_position = 14 + len(self.manager.user_name)
+            if (msg[14:name_position] == self.manager.user_name):
+                to_user = msg[14:name_position]
+                print to_user
+                from_user = msg[name_position:-538]
+                print from_user
+                timestamp = msg[-538:-512]
+                print timestamp
+                msg_to_decrypt = msg[-512:-256]
+                print msg_to_decrypt
+                sign_to_check = msg[-256:]
+                print sign_to_check
+
+                kfile = open('private_keys/private_key_'+ self.manager.user_name + '.pem')
+                kstr = kfile.read()
+                kfile.close()
+                key = RSA.importKey(kstr)
+                cipher = PKCS1_OAEP.new(key)
+                buffer = msg_to_decrypt
+                decrypted_msg = cipher.decrypt(buffer)
+
+                shared_secret = decrypted_msg[-32:]
+                print shared_secret
+                print len(shared_secret)
+                print decrypted_msg[0:len(from_user)]
+                print "decrypted message len " + str(len(decrypted_msg))
+
+                kfile = open('public_keys/public_key_' + self.manager.user_name + '.pem')
+                pub_key = kfile.read()
+                kfile.close()
+                rsakey = RSA.importKey(pub_key)
+                signer = PKCS1_v1_5.new(rsakey)
+                digest = SHA256.new()
+
+                data = str(to_user + timestamp + msg_to_decrypt)
+                print "data length " + str(len(data))
+
+                digest.update(data)
+
+                print signer.verify(digest, sign_to_check)
+
+                if signer.verify(digest, sign_to_check):
+                    #save key states and continue with conversation
+                    self.needs_key = False
+                    print "sign verified!"
+
+                else:
+                    print "conversation not created"
+                # print message and add it to the list of printed messages
+                # self.print_message(
+                #     msg_raw=msg,
+                #    owner_str=owner_str
+                # )
+            else:
+                pass
+
 
         else:
             statefile = 'receive_states/' + str(self.manager.user_name) + '_' + str(self.id) + '_rcvstates.txt'
@@ -383,68 +436,59 @@ class Conversation:
         print "in outgoing message"
 
         if (self.needs_key):
-            encoded_msg = base64.encodestring("BeginChatSetup")
 
-            # post the message to the conversation
-            self.manager.post_message_to_conversation(encoded_msg)
-            self.needs_key = False
-            print self.needs_key
+            # Generate a shared secret
+            keystring = "0123456789abcdef0123456789abcdef"
+            list_of_users = self.manager.get_other_users()
+
+            # BeginChatSetup|B|A|[Ta | PubEncKb(A|K) | Sigka(B|Ta|PubEnckB(A|K)]  )
+
+            # PubEncKB(A|K): RSA encryption using public key of user
+            for user in list_of_users:
+                for person in RSAKeys:
+                    if person["user_name"] == user:
+                        pubkey_file = person["RSA_public_key"]
+
+                        kfile = open(pubkey_file)
+                        keystr = kfile.read()
+                        kfile.close()
+
+                        pubkey = RSA.importKey(keystr)
+                        cipher = PKCS1_OAEP.new(pubkey)
+
+                        # plength = 214 - (len(msg) % 214)
+                        # msg += chr(plength) * plength
+                        msg = str(self.manager.user_name) + str(keystring)
+
+                        encoded_msg = cipher.encrypt(msg)
+
+                        # B|Timstamp of manager|PubEncKB(A|K)
+                        time = datetime.datetime.now()
+                        msg_to_sign = str(user) + str(time) + encoded_msg
+
+                        # Generate signature
+                        kfile = open('private_keys/private_key_' + user + '.pem')
+                        keystr = kfile.read()
+                        kfile.close()
+                        key = RSA.importKey(keystr)
+
+                        signer = PKCS1_v1_5.new(key)
+                        digest = SHA256.new()
+                        digest.update(msg_to_sign)
+                        sign = signer.sign(digest)
+                        msg_to_send = "BeginChatSetup" + str(user) + str(self.manager.user_name) + str(
+                            time) + encoded_msg + sign
+                        print msg_to_send
+                        encoded_msg = base64.encodestring(msg_to_send)
+
+                        # post the message to the conversation
+                        self.manager.post_message_to_conversation(encoded_msg)
+                        self.needs_key = False
+                        print self.needs_key
+
+                        #PUT THIS KEY IN STATE FILE
 
 
-            #list_of_users = self.manager.get_other_users()
-
-            #generate key
-            #key = "0123456789abcdef0123456789abcdef"
-            #keystring="0123456789abcdef0123456789abcdef"
-            #key = os.urandom(AES.block_size)
-
-            # for user in list_of_users:
-            #   #BeginChatSetup|B|A|[Ta | PubEncKb(A|K) | Sigka(B|Ta|PubEnckB(A|K)]  )
-            #
-            #   #PubEncKB(A|K)
-            #   # RSA encryption using public key of user
-            #     for person in RSAKeys:
-            #         if person["user_name"] == user:
-            #             pubkey_file = person["RSA_public_key"]
-            #
-            #             kfile = open(pubkey_file)
-            #             keystr = kfile.read()
-            #             kfile.close()
-            #
-            #             pubkey = RSA.importKey(keystr)
-            #             cipher = PKCS1_OAEP.new(pubkey)
-            #
-            #             # plength = 214 - (len(msg) % 214)
-            #             # msg += chr(plength) * plength
-            #             msg = str(self.manager.user_name)+ str(keystring)
-            #
-            #             encoded_msg = cipher.encrypt(msg)
-            #
-            #             # B|Timstamp of manager|PubEncKB(A|K)
-            #             time = datetime.datetime.now()
-            #             msg_to_sign = str(user) + str(time) + encoded_msg
-            #
-            #             # Generate signature
-            #             kfile = open('private_keys/private_key_'+user+'.pem')
-            #             keystr = kfile.read()
-            #             kfile.close()
-            #             key = RSA.importKey(keystr)
-            #
-            #             signer = PKCS1_v1_5.new(key)
-            #             digest = SHA256.new()
-            #             digest.update(msg_to_sign)
-            #             sign = signer.sign(digest)
-            #
-            #             msg_to_send = "BeginChatSetup" + str(user) + str(self.manager.user_name) + str(time) + encoded_msg + sign
-            #             print msg_to_send
-            #
-            #             # example is base64 encoding, extend this with any crypto processing of your protocol
-            #             encoded_msg_key = base64.encodestring(msg_to_send)
-            #
-            #             # post the message to the conversation
-            #             self.manager.post_message_to_conversation(encoded_msg_key)
-            #
-            #             self.needs_key = False
 
 
         # read the content of the state file to get keys
