@@ -142,6 +142,7 @@ class Conversation:
         Prepares the conversation for usage
         :return:
         '''
+
         self.needs_key = True
 
         # get conversation specifics 
@@ -182,65 +183,7 @@ class Conversation:
         file.close()
 
 
-        
-        # list_of_users = self.manager.get_other_users()
-        #
-        # # generate key
-        # key = "abc"
-        # keystring="abc"
-        # #key = os.urandom(AES.block_size)
-        #
-        # for user in list_of_users:
-        #      #BeginChatSetup|B|A|[Ta | PubEncKb(A|K) | Sigka(B|Ta|PubEnckB(A|K)]  )
-        #
-        #      #PubEncKB(A|K)
-        #      # RSA encryption using public key of user
-        #      for person in RSAKeys:
-        #          if person["user_name"] == user:
-        #              pubkey_file = person["RSA_public_key"]
-        #
-        #              kfile = open(pubkey_file)
-        #              keystr = kfile.read()
-        #              kfile.close()
-        #
-        #              pubkey = RSA.importKey(keystr)
-        #              cipher = PKCS1_OAEP.new(pubkey)
-        #
-        #              # plength = 214 - (len(msg) % 214)
-        #              # msg += chr(plength) * plength
-        #              msg = str(self.manager.user_name)+ str(keystring)
-        #
-        #              encoded_msg = cipher.encrypt(msg)
-        #
-        #              # B|Timstamp of manager|PubEncKB(A|K)
-        #              time = datetime.datetime.now()
-        #              msg_to_sign = str(user) + str(time) + encoded_msg
-        #
-        #              # Generate signature
-        #              kfile = open('private_keys/private_key_'+user+'.pem')
-        #              keystr = kfile.read()
-        #              kfile.close()
-        #              key = RSA.importKey(keystr)
-        #
-        #              signer = PKCS1_v1_5.new(key)
-        #              digest = SHA256.new()
-        #              digest.update(msg_to_sign)
-        #              sign = signer.sign(digest)
-        #
-        #              msg_to_send = "BeginChatSetup" + str(user) + str(self.manager.user_name) + str(time) + encoded_msg + sign
-        #              print "before outgoing message"
-        #              print msg_to_send
-        #              self.process_outgoing_message(msg_to_send)
 
-
-
-
-         # for user in list_of_users:
-         #     for person in RSAKeys:
-        # #         if person["user_name"] == user:
-        # #             print person["RSA_public_key"]
-        # #             print datetime.datetime.now()
-        #
         # # You can use this function to initiate your key exchange
         # # Useful stuff that you may need:
         # # - name of the current user: self.manager.user_name
@@ -274,130 +217,146 @@ class Conversation:
         # --------------------- MEL EDITS --------------------------------------
 
         print "in incoming message"
-        print base64.decodestring(msg_raw)
+        #print base64.decodestring(msg_raw)
+        print msg[0:14]
 
-        statefile = 'receive_states/' + str(self.manager.user_name) + '_' + str(self.id) + '_rcvstates.txt'
-        ifile = open(statefile, 'rb')
-        line = ifile.readline()
-        enckey = line[len("enckey: "):len("enckey: ")+32]
-        enckey = self.hex_to_bin(enckey)
-        line = ifile.readline()
-        mackey = line[len("mackey: "):len("mackey: ")+32]
-        mackey = self.hex_to_bin(mackey)
+        if (msg[0:14] == "BeginChatSetup"):
+            print "in begin chat setup"
+            # print message and add it to the list of printed messages
+            self.print_message(
+                msg_raw=msg,
+               owner_str=owner_str
+            )
+            self.needs_key = False
 
-        # getting receive sequences
-
-        # create array to store rcv sequences 
-        num_other_users = len(self.manager.get_other_users())
-
-        # sequences = [None] * num_other_users
-        sequences = {}
-
-        # read in rcv sequences
-        line = ifile.readline()
-        i = 0
-
-        rcvsqn = 0
-        while(i < num_other_users):
-            if (line[1:4] == owner_str[1:4]):
-                rcvsqn = line[len("0000_rcv: "):]
-                rcvsqn = long(rcvsqn)
-                sequences[line[:4]] = rcvsqn + 1
-            else:
-                rcvsqnHolder = line[len("0000_rcv: "):]
-                rcvsqnHolder = long(rcvsqnHolder)
-                sequences[line[:4]] = rcvsqnHolder
-
+        else:
+            statefile = 'receive_states/' + str(self.manager.user_name) + '_' + str(self.id) + '_rcvstates.txt'
+            ifile = open(statefile, 'rb')
             line = ifile.readline()
-            i += 1
-         
-        ifile.close()
-        # rcvsqn holds the number to be compared to the message number 
+            enckey = line[len("enckey: "):len("enckey: ") + 32]
+            enckey = self.hex_to_bin(enckey)
+            line = ifile.readline()
+            mackey = line[len("mackey: "):len("mackey: ") + 32]
+            mackey = self.hex_to_bin(mackey)
+
+            # getting receive sequences
+
+             # create array to store rcv sequences
+            num_other_users = len(self.manager.get_other_users())
+
+            # sequences = [None] * num_other_users
+            sequences = {}
+
+            # read in rcv sequences
+            line = ifile.readline()
+            i = 0
+
+            rcvsqn = 0
+            while (i < num_other_users):
+                if (line[1:4] == owner_str[1:4]):
+                    rcvsqn = line[len("0000_rcv: "):]
+                    rcvsqn = long(rcvsqn)
+                    sequences[line[:4]] = rcvsqn + 1
+                else:
+                    rcvsqnHolder = line[len("0000_rcv: "):]
+                    rcvsqnHolder = long(rcvsqnHolder)
+                    sequences[line[:4]] = rcvsqnHolder
+
+                line = ifile.readline()
+                i += 1
+
+            ifile.close()
+            # rcvsqn holds the number to be compared to the message number
 
 
-        # parse the message
-        header_length = 9                                          # header is 9 bytes long
-        header = msg[0:header_length]
-        iv = msg[header_length:header_length+AES.block_size]       # iv is AES.block_size bytes long
-        mac_length = 32                                            # SHA256 hash is 32 bytes long
-        encrypted = msg[header_length+AES.block_size:-mac_length]  # encrypted part is between iv and mac
-        mac = msg[-mac_length:]                                    # last mac_length bytes form the mac
-        header_version = header[0:2]        # version is encoded on 2 bytes 
-        header_type = header[2:3]           # type is encoded on 1 byte 
-        header_length = header[3:5]         # msg length is encoded on 2 bytes 
-        header_sqn = header[5:9]            # msg sqn is encoded on 4 bytes 
+            # parse the message
+            header_length = 9  # header is 9 bytes long
+            header = msg[0:header_length]
+            iv = msg[header_length:header_length + AES.block_size]  # iv is AES.block_size bytes long
+            mac_length = 32  # SHA256 hash is 32 bytes long
+            encrypted = msg[header_length + AES.block_size:-mac_length]  # encrypted part is between iv and mac
+            mac = msg[-mac_length:]  # last mac_length bytes form the mac
+            header_version = header[0:2]  # version is encoded on 2 bytes
+            header_type = header[2:3]  # type is encoded on 1 byte
+            header_length = header[3:5]  # msg length is encoded on 2 bytes
+            header_sqn = header[5:9]  # msg sqn is encoded on 4 bytes
+
+            # checking
+            # print "Message header:"
+            # print "   - protocol version: " + header_version.encode("hex") + " (" + str(int(header_version[0].encode("hex"),16)) + "." + str(int(header_version[1].encode("hex"),16)) + ")"
+            # print "   - message type: " + header_type.encode("hex") + " (" + str(int(header_type.encode("hex"),16)) + ")"
+            # print "   - message length: " + header_length.encode("hex") + " (" + str(int(header_length.encode("hex"),16)) + ")"
+            # print "   - message sequence number: " + header_sqn.encode("hex") + " (" + str(long(header_sqn.encode("hex"),16)) + ")"
 
 
-        # checking
-        #print "Message header:"
-        #print "   - protocol version: " + header_version.encode("hex") + " (" + str(int(header_version[0].encode("hex"),16)) + "." + str(int(header_version[1].encode("hex"),16)) + ")"
-        #print "   - message type: " + header_type.encode("hex") + " (" + str(int(header_type.encode("hex"),16)) + ")"
-        #print "   - message length: " + header_length.encode("hex") + " (" + str(int(header_length.encode("hex"),16)) + ")"
-        #print "   - message sequence number: " + header_sqn.encode("hex") + " (" + str(long(header_sqn.encode("hex"),16)) + ")"
+            # check the msg length
+            if (len(msg) != int(header_length.encode("hex"), 16)):
+                print "Warning: Message length value in header is wrong!"
+                print "Processing is continued nevertheless..."
 
+            # check the sequence number
+            # print "Expecting sequence number " + str(rcvsqn + 1) + " or larger..."
+            sndsqn = long(header_sqn.encode("hex"), 16)
+            if (sndsqn <= rcvsqn):
+                print "Error: Message sequence number is too old!"
+                print "Processing completed."
+                sys.exit(1)
+            print "Sequence number verification is successful."
 
-        # check the msg length
-        if (len(msg) != int(header_length.encode("hex"), 16)):
-            print "Warning: Message length value in header is wrong!"
-            print "Processing is continued nevertheless..."
+            # verify the mac
+            # print "MAC verification is being performed..."
+            H = SHA256.new()
+            MAC = HMAC.new(mackey, digestmod=H)
+            MAC.update(header)
+            MAC.update(iv)
+            MAC.update(encrypted)
+            comp_mac = MAC.digest()
 
-        # check the sequence number
-        #print "Expecting sequence number " + str(rcvsqn + 1) + " or larger..."
-        sndsqn = long(header_sqn.encode("hex"), 16)
-        if (sndsqn <= rcvsqn):
-            print "Error: Message sequence number is too old!"
-            print "Processing completed."
-            sys.exit(1)    
-        print "Sequence number verification is successful."
+            # print "MAC value received: " + mac.encode("hex")
+            # print "MAC value computed: " + comp_mac.encode("hex")
+            if (comp_mac != mac):
+                print "Error: MAC verification failed!"
+                print "Processing completed."
+                sys.exit(1)
+            print "MAC verified correctly."
 
-        # verify the mac
-        #print "MAC verification is being performed..."
-        H = SHA256.new()
-        MAC = HMAC.new(mackey, digestmod = H)
-        MAC.update(header)
-        MAC.update(iv)
-        MAC.update(encrypted)
-        comp_mac = MAC.digest()
+            # decrypt the encrypted part
+            # print "Decryption is attempted..."
+            ENC = AES.new(enckey, AES.MODE_CBC, iv)
+            decrypted = ENC.decrypt(encrypted)
 
-        #print "MAC value received: " + mac.encode("hex")
-        #print "MAC value computed: " + comp_mac.encode("hex")
-        if (comp_mac != mac):
-            print "Error: MAC verification failed!"
-            print "Processing completed."
-            sys.exit(1)
-        print "MAC verified correctly."
+            # remove and check padding
+            i = -1
+            while (decrypted[i] == '\x00'): i -= 1
+            padding = decrypted[i:]
+            payload = decrypted[:i]
+            # print "Padding " + padding.encode("hex") + " is observed."
+            if (padding[0] != '\x01'):
+                print "Error: Wrong padding detected!"
+                print "Processing completed."
+                sys.exit(1)
+            print "Padding is successfully removed."
 
-        # decrypt the encrypted part
-        #print "Decryption is attempted..."
-        ENC = AES.new(enckey, AES.MODE_CBC, iv)
-        decrypted = ENC.decrypt(encrypted)
+            # save state
+            state = "enckey: " + enckey.encode("hex") + '\r\n'
+            state = state + "mackey: " + mackey.encode("hex") + '\r\n'
 
-        # remove and check padding
-        i = -1
-        while (decrypted[i] == '\x00'): i -= 1
-        padding = decrypted[i:]
-        payload = decrypted[:i]
-        #print "Padding " + padding.encode("hex") + " is observed."
-        if (padding[0] != '\x01'):
-            print "Error: Wrong padding detected!"
-            print "Processing completed."
-            sys.exit(1)
-        print "Padding is successfully removed."
+            list_of_users = self.manager.get_other_users()
+            i = 0
+            for user in list_of_users:
+                state = state + str(user[:4]) + "_rcv: " + str(sequences[user[:4]]) + '\r\n'
+                i += 1
 
+            ofile = open(statefile, 'wb')
+            ofile.write(state)
+            ofile.close()
 
-        # save state 
-        state = "enckey: " + enckey.encode("hex") + '\r\n'
-        state = state + "mackey: " + mackey.encode("hex") + '\r\n'
+            # print message and add it to the list of printed messages
+            self.print_message(
+                msg_raw=payload,
+                owner_str=owner_str
+            )
 
-        list_of_users = self.manager.get_other_users()
-        i = 0
-        for user in list_of_users:
-            state = state + str(user[:4]) + "_rcv: " + str(sequences[user[:4]]) + '\r\n'
-            i += 1
-
-        ofile = open(statefile, 'wb')
-        ofile.write(state)
-        ofile.close()
 
 
         # ------------------------ END MEL -----------------------------------
@@ -405,10 +364,10 @@ class Conversation:
 
 
         # print message and add it to the list of printed messages
-        self.print_message(
-            msg_raw=payload,
-            owner_str=owner_str
-        )
+        #self.print_message(
+        #    msg_raw=payload,
+         #   owner_str=owner_str
+        #)
 
     def process_outgoing_message(self, msg_raw, originates_from_console=False):
         '''
@@ -424,175 +383,183 @@ class Conversation:
         print "in outgoing message"
 
         if (self.needs_key):
-            list_of_users = self.manager.get_other_users()
-
-            #generate key
-            key = "0123456789abcdef0123456789abcdef"
-            keystring="0123456789abcdef0123456789abcdef"
-            #key = os.urandom(AES.block_size)
-
-            for user in list_of_users:
-              #BeginChatSetup|B|A|[Ta | PubEncKb(A|K) | Sigka(B|Ta|PubEnckB(A|K)]  )
-
-              #PubEncKB(A|K)
-              # RSA encryption using public key of user
-                for person in RSAKeys:
-                    if person["user_name"] == user:
-                        pubkey_file = person["RSA_public_key"]
-
-                        kfile = open(pubkey_file)
-                        keystr = kfile.read()
-                        kfile.close()
-
-                        pubkey = RSA.importKey(keystr)
-                        cipher = PKCS1_OAEP.new(pubkey)
-
-                        # plength = 214 - (len(msg) % 214)
-                        # msg += chr(plength) * plength
-                        msg = str(self.manager.user_name)+ str(keystring)
-
-                        encoded_msg = cipher.encrypt(msg)
-
-                        # B|Timstamp of manager|PubEncKB(A|K)
-                        time = datetime.datetime.now()
-                        msg_to_sign = str(user) + str(time) + encoded_msg
-
-                        # Generate signature
-                        kfile = open('private_keys/private_key_'+user+'.pem')
-                        keystr = kfile.read()
-                        kfile.close()
-                        key = RSA.importKey(keystr)
-
-                        signer = PKCS1_v1_5.new(key)
-                        digest = SHA256.new()
-                        digest.update(msg_to_sign)
-                        sign = signer.sign(digest)
-
-                        msg_to_send = "BeginChatSetup" + str(user) + str(self.manager.user_name) + str(time) + encoded_msg + sign
-                        print msg_to_send
-
-                        # example is base64 encoding, extend this with any crypto processing of your protocol
-                        encoded_msg_key = base64.encodestring(msg_to_send)
-
-                        # post the message to the conversation
-                        self.manager.post_message_to_conversation(encoded_msg_key)
-
-                        self.needs_key = False
-
-        elif (False):
-            # read the content of the state file to get keys
-            # REPLACE 1234 WITH SELF.MANAGER.CONVERSATION_ID ONCE SETUP CONVERSATION WORKS
-            statefile = 'send_states/' + str(self.manager.user_name) + '_' + str(self.id) + '_sndstates.txt'
-            ifile = open(statefile, 'rb')
-            line = ifile.readline()
-            enckey = line[len("enckey: "):len("enckey: ")+32]
-            enckey = self.hex_to_bin(enckey)
-            line = ifile.readline()
-            mackey = line[len("mackey: "):len("mackey: ")+32]
-            mackey = self.hex_to_bin(mackey)
-
-            # create array to store send sequences
-            num_other_users = len(self.manager.get_other_users())
-
-            sequences = {}
-
-            line = ifile.readline()
-            i = 0
-
-            # get send sequenses from the state file
-            while(i < num_other_users):
-                sndsqn = line[len("0000_snd: "):]
-                sndsqn = long(sndsqn)
-                # assign sequence number to user in dictionary
-                sequences[line[:4]] = sndsqn
-                line = ifile.readline()
-                i += 1
-
-            ifile.close()
-
-
-            #set payload
-            payload = msg_raw
-
-            # compute padding
-            payload_length = len(payload)
-            padding_length = AES.block_size - payload_length%AES.block_size
-            padding = chr(1) + chr(0)*(padding_length-1)
-
-            mac_length = 32  # SHA256 hash value is 32 bytes long
-
-            # compute message length...
-            # header: 9 bytes
-            #    version: 2 bytes
-            #    type:    1 btye
-            #    length:  2 btyes
-            #    sqn:     4 bytes
-            # iv: AES.block_size
-            # payload: payload_length
-            # padding: padding_length
-            # mac: mac_length
-            msg_length = 9 + AES.block_size + payload_length + padding_length + mac_length
-
-            # create header
-            header_version = "\x04\x06"                # protocol version 4.6
-            header_type = "\x01"                       # message type 1
-            header_length = self.int_to_bin(msg_length, 2)  # message length (encoded on 2 bytes)
-            header_sqn = self.int_to_bin(sndsqn + 1, 4)     # next message sequence number (encoded on 4 bytes)
-            header = header_version + header_type + header_length + header_sqn
-
-            # encrypt what needs to be encrypted (payload + padding)
-            iv = Random.new().read(AES.block_size)
-            ENC = AES.new(enckey, AES.MODE_CBC, iv)
-            encrypted = ENC.encrypt(payload + padding)
-
-            # compute mac on header and encrypted payload
-            H = SHA256.new()
-            MAC = HMAC.new(mackey, digestmod = H)
-            MAC.update(header)
-            MAC.update(iv)
-            MAC.update(encrypted)
-            mac = MAC.digest()
-
-            processed_msg = header + iv + encrypted + mac
-
-
-            # save state
-
-            state = "enckey: " + enckey.encode("hex") + '\r\n'
-            state = state + "mackey: " + mackey.encode("hex") + '\r\n'
-
-            list_of_users = self.manager.get_other_users()
-
-            i = 0
-            for user in list_of_users:
-                userStr = str(user)
-                userStr = userStr[:4]
-                state = state + userStr + "_snd: " + str(sequences[userStr] + 1) + '\r\n'
-                i += 1
-
-            ofile = open(statefile, 'wb')
-            ofile.write(state)
-            ofile.close()
-
-
-
-            # ------------------------ END MEL -----------------------------------
-
-            # if the message has been typed into the console, record it, so it is never printed again during chatting
-            if originates_from_console == True:
-                # message is already seen on the console
-                m = Message(
-                    owner_name=self.manager.user_name,
-                    content=processed_msg
-                )
-                self.printed_messages.append(m)
-
-                # process outgoing message here
-            # example is base64 encoding, extend this with any crypto processing of your protocol
-            encoded_msg = base64.encodestring(processed_msg)
+            encoded_msg = base64.encodestring("BeginChatSetup")
 
             # post the message to the conversation
             self.manager.post_message_to_conversation(encoded_msg)
+            self.needs_key = False
+            print self.needs_key
+
+
+            #list_of_users = self.manager.get_other_users()
+
+            #generate key
+            #key = "0123456789abcdef0123456789abcdef"
+            #keystring="0123456789abcdef0123456789abcdef"
+            #key = os.urandom(AES.block_size)
+
+            # for user in list_of_users:
+            #   #BeginChatSetup|B|A|[Ta | PubEncKb(A|K) | Sigka(B|Ta|PubEnckB(A|K)]  )
+            #
+            #   #PubEncKB(A|K)
+            #   # RSA encryption using public key of user
+            #     for person in RSAKeys:
+            #         if person["user_name"] == user:
+            #             pubkey_file = person["RSA_public_key"]
+            #
+            #             kfile = open(pubkey_file)
+            #             keystr = kfile.read()
+            #             kfile.close()
+            #
+            #             pubkey = RSA.importKey(keystr)
+            #             cipher = PKCS1_OAEP.new(pubkey)
+            #
+            #             # plength = 214 - (len(msg) % 214)
+            #             # msg += chr(plength) * plength
+            #             msg = str(self.manager.user_name)+ str(keystring)
+            #
+            #             encoded_msg = cipher.encrypt(msg)
+            #
+            #             # B|Timstamp of manager|PubEncKB(A|K)
+            #             time = datetime.datetime.now()
+            #             msg_to_sign = str(user) + str(time) + encoded_msg
+            #
+            #             # Generate signature
+            #             kfile = open('private_keys/private_key_'+user+'.pem')
+            #             keystr = kfile.read()
+            #             kfile.close()
+            #             key = RSA.importKey(keystr)
+            #
+            #             signer = PKCS1_v1_5.new(key)
+            #             digest = SHA256.new()
+            #             digest.update(msg_to_sign)
+            #             sign = signer.sign(digest)
+            #
+            #             msg_to_send = "BeginChatSetup" + str(user) + str(self.manager.user_name) + str(time) + encoded_msg + sign
+            #             print msg_to_send
+            #
+            #             # example is base64 encoding, extend this with any crypto processing of your protocol
+            #             encoded_msg_key = base64.encodestring(msg_to_send)
+            #
+            #             # post the message to the conversation
+            #             self.manager.post_message_to_conversation(encoded_msg_key)
+            #
+            #             self.needs_key = False
+
+
+        # read the content of the state file to get keys
+        # REPLACE 1234 WITH SELF.MANAGER.CONVERSATION_ID ONCE SETUP CONVERSATION WORKS
+        statefile = 'send_states/' + str(self.manager.user_name) + '_' + str(self.id) + '_sndstates.txt'
+        ifile = open(statefile, 'rb')
+        line = ifile.readline()
+        enckey = line[len("enckey: "):len("enckey: ")+32]
+        enckey = self.hex_to_bin(enckey)
+        line = ifile.readline()
+        mackey = line[len("mackey: "):len("mackey: ")+32]
+        mackey = self.hex_to_bin(mackey)
+
+        # create array to store send sequences
+        num_other_users = len(self.manager.get_other_users())
+
+        sequences = {}
+
+        line = ifile.readline()
+        i = 0
+
+        # get send sequenses from the state file
+        while(i < num_other_users):
+            sndsqn = line[len("0000_snd: "):]
+            sndsqn = long(sndsqn)
+            # assign sequence number to user in dictionary
+            sequences[line[:4]] = sndsqn
+            line = ifile.readline()
+            i += 1
+
+        ifile.close()
+
+
+        #set payload
+        payload = msg_raw
+
+        # compute padding
+        payload_length = len(payload)
+        padding_length = AES.block_size - payload_length%AES.block_size
+        padding = chr(1) + chr(0)*(padding_length-1)
+
+        mac_length = 32  # SHA256 hash value is 32 bytes long
+
+        # compute message length...
+        # header: 9 bytes
+        #    version: 2 bytes
+        #    type:    1 btye
+        #    length:  2 btyes
+        #    sqn:     4 bytes
+        # iv: AES.block_size
+        # payload: payload_length
+        # padding: padding_length
+        # mac: mac_length
+        msg_length = 9 + AES.block_size + payload_length + padding_length + mac_length
+
+        # create header
+        header_version = "\x04\x06"                # protocol version 4.6
+        header_type = "\x01"                       # message type 1
+        header_length = self.int_to_bin(msg_length, 2)  # message length (encoded on 2 bytes)
+        header_sqn = self.int_to_bin(sndsqn + 1, 4)     # next message sequence number (encoded on 4 bytes)
+        header = header_version + header_type + header_length + header_sqn
+
+        # encrypt what needs to be encrypted (payload + padding)
+        iv = Random.new().read(AES.block_size)
+        ENC = AES.new(enckey, AES.MODE_CBC, iv)
+        encrypted = ENC.encrypt(payload + padding)
+
+        # compute mac on header and encrypted payload
+        H = SHA256.new()
+        MAC = HMAC.new(mackey, digestmod = H)
+        MAC.update(header)
+        MAC.update(iv)
+        MAC.update(encrypted)
+        mac = MAC.digest()
+
+        processed_msg = header + iv + encrypted + mac
+
+
+        # save state
+
+        state = "enckey: " + enckey.encode("hex") + '\r\n'
+        state = state + "mackey: " + mackey.encode("hex") + '\r\n'
+
+        list_of_users = self.manager.get_other_users()
+
+        i = 0
+        for user in list_of_users:
+            userStr = str(user)
+            userStr = userStr[:4]
+            state = state + userStr + "_snd: " + str(sequences[userStr] + 1) + '\r\n'
+            i += 1
+
+        ofile = open(statefile, 'wb')
+        ofile.write(state)
+        ofile.close()
+
+
+
+        # ------------------------ END MEL -----------------------------------
+
+        # if the message has been typed into the console, record it, so it is never printed again during chatting
+        if originates_from_console == True:
+            # message is already seen on the console
+            m = Message(
+                owner_name=self.manager.user_name,
+                content=processed_msg
+            )
+            self.printed_messages.append(m)
+
+            # process outgoing message here
+        # example is base64 encoding, extend this with any crypto processing of your protocol
+        encoded_msg = base64.encodestring(processed_msg)
+
+        # post the message to the conversation
+        self.manager.post_message_to_conversation(encoded_msg)
 
     def print_message(self, msg_raw, owner_str):
         '''
