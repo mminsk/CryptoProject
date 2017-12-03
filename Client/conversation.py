@@ -146,8 +146,8 @@ class Conversation:
         users = self.manager.get_other_users()
         manager_name = self.manager.user_name
         conversationID = self.id
-        enckey = "0123456789abcdef0123456789abcdef"
-        mackey= "fedcba9876543210fedcba9876543210"
+        #enckey = "0123456789abcdef0123456789abcdef"
+        #mackey= "fedcba9876543210fedcba9876543210"
 
         # create send states directory 
         if not os.path.exists("send_states"):
@@ -179,9 +179,10 @@ class Conversation:
         if not os.path.exists("key_states"):
             os.makedirs("key_states")
 
-        file = open("key_states/" + str(manager_name) + "_" + str(conversationID) + "_" + "keystates.txt", 'w')
-        file.write("enckey: " + enckey + "\n")
-        file.write("mackey: " + mackey)
+        #file = open("key_states/" + str(manager_name) + "_" + str(conversationID) + "_" + "keystates.txt", 'w')
+        #file.write("enckey: " + enckey + "\n")
+        #file.write("mackey: " + mackey)
+        #file.close()
 
 
 
@@ -211,6 +212,8 @@ class Conversation:
                 :param print_all: is the message part of the conversation history?
                 :return: None
                 '''
+
+        self.process_outgoing_message("hey")
 
         # process message 
         msg = base64.decodestring(msg_raw)
@@ -279,12 +282,9 @@ class Conversation:
                     file.write("shared secret: " + shared_secret)
                     file.close()
 
-                    # THIS IS HOW YOU UPDATE THE KEY FILES ONCE THEY ARE GENERATED FROM THE SHARED SECRET 
-                    #keyfile = open("key_states/" + str(manager_name) + "_" + str(conversationID) + "_" + "keystates.txt", 'w')
-                    #keyfile.write("enckey: " + "enc key here" + "\n")
-                    #keyfile.write("mackey: " + "mac key here")
-                    #keyfile.close()
+                    fresh_random = "BeginChatSetup" + str(from_user) + str(shared_secret)
 
+                    self.generate_keyfiles(fresh_random, shared_secret)
 
 
                 else:
@@ -429,7 +429,25 @@ class Conversation:
             )
 
 
+        if (len(self.all_messages) % 5 == 0):
+            # getting fresh random
+            file = open("key_states/" + str(self.manager.user_name) + "_" + str(self.id) + "_" + "keystates.txt", 'rb')
+            line = file.readline()
+            enckey = line[len("enckey: "):len("enckey: ")+32]
+            enckey = self.hex_to_bin(enckey)
+            line = file.readline()
+            mackey = line[len("mackey: "):len("mackey: ")+32]
+            mackey = self.hex_to_bin(mackey)
+            fresh_random = str(enckey + mackey)
+            file.close()
 
+            # getting shared secret
+            file = open(self.manager.user_name + "_shared_secrets/" + str(self.id) + ".txt", 'rb')
+            line = file.readline()
+            shared_secret = line[len("shared secret: "):len("shared secret: ")+32]
+            file.close()
+
+            self.generate_keyfiles(fresh_random, shared_secret)
         # ------------------------ END MEL -----------------------------------
 
 
@@ -454,9 +472,7 @@ class Conversation:
         if (self.needs_key):
 
             # Generate a shared secret
-            keystring = "0123456789abcdef0123456789abcdef"
-            #keystring = os.urandom(AES.block_size)
-
+            keystring = Random.get_random_bytes(32)
 
             if not os.path.exists(self.manager.user_name + "_shared_secrets"):
                 os.makedirs(self.manager.user_name + "_shared_secrets")
@@ -466,8 +482,10 @@ class Conversation:
 
             file.write("shared secret: " + keystring)
 
-
             list_of_users = self.manager.get_other_users()
+
+            fresh_random = "BeginChatSetup" + str(self.manager.user_name) + str(keystring)
+            self.generate_keyfiles(fresh_random, keystring)
 
             # BeginChatSetup|B|A|[Ta | PubEncKb(A|K) | Sigka(B|Ta|PubEnckB(A|K)]  )
 
@@ -513,15 +531,6 @@ class Conversation:
                         self.manager.post_message_to_conversation(encoded_msg)
                         self.needs_key = False
                         print self.needs_key
-
-                        #PUT THIS KEY IN STATE FILE
-
-                        #file = open("key_states/" + str(manager_name) + "_" + str(conversationID) + "_" + "keystates.txt", 'w')
-                        #file.write("enckey: " + enckey + "\n")
-                        #file.write("mackey: " + mackey)
-                        #file.close()
-
-
 
 
         # read the content of the key file to get keys
@@ -635,6 +644,36 @@ class Conversation:
 
         # post the message to the conversation
         self.manager.post_message_to_conversation(encoded_msg)
+
+
+    def generate_keyfiles(self, fresh_rand, shared_secret):
+        #ENC KEY
+        h = HMAC.new(shared_secret)
+        hash = SHA256.new()
+        hash.update(fresh_rand)
+        fresh_random = hash.digest()
+        h.update(fresh_random)
+        label = "Encryption Key"
+        h.update(label)
+        h.digest_size=32
+        enc_key = h.hexdigest()
+
+        #MAC KEY
+        h = HMAC.new(shared_secret)
+        hash = SHA256.new()
+        hash.update(fresh_rand)
+        fresh_random = hash.digest()
+        h.update(fresh_random)
+        label = "MAC key"
+        h.update(label)
+        h.digest_size=32
+        mac_key = h.hexdigest()
+
+        file = open("key_states/" + str(self.manager.user_name) + "_" + str(self.id) + "_" + "keystates.txt", 'w')
+        file.write("enckey: " + enc_key + "\n")
+        file.write("mackey: " + mac_key)
+        file.close()
+
 
     def print_message(self, msg_raw, owner_str):
         '''
