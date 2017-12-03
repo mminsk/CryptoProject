@@ -1,4 +1,4 @@
 enckey: 0123456789abcdef0123456789abcdef
 mackey: fedcba9876543210fedcba9876543210
-Bill_snd: 2
-Elon_snd: 2
+Bill_rcv: 0
+Stev_rcv: 1

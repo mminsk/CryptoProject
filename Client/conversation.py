@@ -271,6 +271,14 @@ class Conversation:
                     self.needs_key = False
                     print "sign verified!"
 
+                    if not os.path.exists(self.manager.user_name + "_shared_secrets"):
+                        os.makedirs(self.manager.user_name + "_shared_secrets")
+
+                    # open and write send states file
+                    file = open(self.manager.user_name + "_shared_secrets/" + str(self.id) + ".txt", 'w')
+
+                    file.write("shared secret: " + shared_secret)
+
                 else:
                     print "conversation not created"
                 # print message and add it to the list of printed messages
@@ -439,6 +447,18 @@ class Conversation:
 
             # Generate a shared secret
             keystring = "0123456789abcdef0123456789abcdef"
+            #keystring = os.urandom(AES.block_size)
+
+
+            if not os.path.exists(self.manager.user_name + "_shared_secrets"):
+                os.makedirs(self.manager.user_name + "_shared_secrets")
+
+            # open and write send states file
+            file = open(self.manager.user_name + "_shared_secrets/" + str(self.id) + ".txt", 'w')
+
+            file.write("shared secret: " + keystring)
+
+
             list_of_users = self.manager.get_other_users()
 
             # BeginChatSetup|B|A|[Ta | PubEncKb(A|K) | Sigka(B|Ta|PubEnckB(A|K)]  )
