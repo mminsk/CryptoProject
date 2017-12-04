@@ -179,12 +179,6 @@ class Conversation:
         if not os.path.exists("key_states"):
             os.makedirs("key_states")
 
-        #file = open("key_states/" + str(manager_name) + "_" + str(conversationID) + "_" + "keystates.txt", 'w')
-        #file.write("enckey: " + enckey + "\n")
-        #file.write("mackey: " + mackey)
-        #file.close()
-
-
 
         # # You can use this function to initiate your key exchange
         # # Useful stuff that you may need:
@@ -196,8 +190,6 @@ class Conversation:
         # # Since there is no crypto in the current version, no preparation is needed, so do nothing
         # # replace this with anything needed for your key exchange
         #
-
-        # self.process_outgoing_message("hello", Tre)
 
         pass
 
@@ -218,6 +210,10 @@ class Conversation:
         # --------------------- MEL EDITS --------------------------------------
 
         print "in incoming message"
+
+        if (msg[0:12] == "COMPROMISED:"):
+            print msg[12:]
+            return 
 
         if (msg[0:14] == "BeginChatSetup"):
             print "in begin chat setup"
@@ -286,7 +282,7 @@ class Conversation:
 
 
                 else:
-                    print "conversation not created"
+                    print "conversation not created - system compromised"
 
                     compromised_msg = "COMPROMISED" + self.manager.user_name
 
@@ -302,8 +298,10 @@ class Conversation:
                     digest.update(compromised_msg)
                     compromised_sign = signer.sign(digest)
                     msg_to_send = "COMPROMISED" + str(self.manager.user_name) + str(compromised_sign)
+                    print "constructed message"
                     self.process_outgoing_message(msg_to_send)
                     print "compromised message sent"
+                    return
 
                 # print message and add it to the list of printed messages
                 # self.print_message(
@@ -315,6 +313,9 @@ class Conversation:
 
 
         else:
+            # if key path does not exist, system must have been compromised - return
+            if not os.path.exists('key_states/' + str(self.manager.user_name) + '_' + str(self.id) + '_keystates.txt'):
+                return
 
             # getting enc and mac keys 
             keyfile = 'key_states/' + str(self.manager.user_name) + '_' + str(self.id) + '_keystates.txt'
@@ -508,10 +509,13 @@ class Conversation:
             print signer.verify(digest, sign_to_check)
 
             if signer.verify(digest, sign_to_check):
-                encoded_msg = base64.encodestring(user_compromised + "is compromised. Proceed at your own risk.")
+                print "ENTERED IF"
+                encoded_msg = base64.encodestring("COMPROMISED:" + user_compromised + " is compromised. Proceed at your own risk.")
                 # post the message to the conversation
                 self.manager.post_message_to_conversation(encoded_msg)
-                pass
+                print "POSTED MESSAGE"
+                return
+
             else:
                 pass
 
