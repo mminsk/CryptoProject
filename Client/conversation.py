@@ -213,8 +213,6 @@ class Conversation:
                 :return: None
                 '''
 
-        self.process_outgoing_message("hey")
-
         # process message 
         msg = base64.decodestring(msg_raw)
         # --------------------- MEL EDITS --------------------------------------
@@ -261,7 +259,7 @@ class Conversation:
                 signer = PKCS1_v1_5.new(rsakey)
                 digest = SHA256.new()
 
-                data = str(to_user + timestamp + msg_to_decrypt)
+                data = str(to_user + timestamp + msg_to_decrypt + "A")
                 print "data length " + str(len(data))
 
                 digest.update(data)
@@ -289,6 +287,24 @@ class Conversation:
 
                 else:
                     print "conversation not created"
+
+                    compromised_msg = "COMPROMISED" + self.manager.user_name
+
+                    #sign compromised message
+                    # Generate signature
+                    kfile = open('private_keys/private_key_' + self.manager.user_name + '.pem')
+                    keystr = kfile.read()
+                    kfile.close()
+                    key = RSA.importKey(keystr)
+
+                    signer = PKCS1_v1_5.new(key)
+                    digest = SHA256.new()
+                    digest.update(compromised_msg)
+                    compromised_sign = signer.sign(digest)
+                    msg_to_send = "COMPROMISED" + str(self.manager.user_name) + str(compromised_sign)
+                    self.process_outgoing_message(msg_to_send)
+                    print "compromised message sent"
+
                 # print message and add it to the list of printed messages
                 # self.print_message(
                 #     msg_raw=msg,
@@ -468,6 +484,37 @@ class Conversation:
         '''
         # --------------------- MEL EDITS --------------------------------------
         print "in outgoing message"
+
+        print msg_raw[0:11]
+        if (msg_raw[0:11] == "COMPROMISED"):
+
+            sign_to_check = msg_raw[-256:]
+            user_compromised = msg_raw[11:-256]
+            print user_compromised
+
+            #verify signature
+            kfile = open('public_keys/public_key_' + user_compromised + '.pem')
+            pub_key = kfile.read()
+            kfile.close()
+            rsakey = RSA.importKey(pub_key)
+            signer = PKCS1_v1_5.new(rsakey)
+            digest = SHA256.new()
+
+            data = str("COMPROMISED" + user_compromised)
+            print "data length " + str(len(data))
+
+            digest.update(data)
+
+            print signer.verify(digest, sign_to_check)
+
+            if signer.verify(digest, sign_to_check):
+                encoded_msg = base64.encodestring(user_compromised + "is compromised. Proceed at your own risk.")
+                # post the message to the conversation
+                self.manager.post_message_to_conversation(encoded_msg)
+                pass
+            else:
+                pass
+
 
         if (self.needs_key):
 
