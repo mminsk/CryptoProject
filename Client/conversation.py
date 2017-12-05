@@ -160,13 +160,12 @@ class Conversation:
                 file.write("\n")
         file.close()
 
-
         # create receive states file
         if not os.path.exists("receive_states"):
             os.makedirs("receive_states")
 
+        # open and write receive states file
         file = open("receive_states/" + str(manager_name) + "_"+ str(conversationID) + "_" + "rcvstates.txt",'w')
-
         for user in users:
             if user != manager_name:
                 file.write(user[:4] + "_rcv: 0")
@@ -193,12 +192,12 @@ class Conversation:
         # basic message processing
         msg = base64.decodestring(msg_raw)
 
-        # if received a compromised alert
+        # if received a compromised alert, print to screen and exit method
         if (msg[0:12] == "COMPROMISED:"):
             print msg[12:]
             return 
 
-        # if received a key exchange message
+        # if received a key exchange message, parse information
         if (msg[0:14] == "BeginChatSetup"):
 
             # BeginChatSetup|B|A|[Ta | PubEncKb(A|K) | Sigka(B|Ta|PubEnckB(A|K)]
@@ -230,185 +229,40 @@ class Conversation:
                 #Ensure key freshness
                 if (all_counter_zero and (time_object > time_24hours)):
 
-                    kfile = open('private_keys/private_key_'+ self.manager.user_name + '.pem')
-                    kstr = kfile.read()
-                    kfile.close()
-                    key = RSA.importKey(kstr)
-                    cipher = PKCS1_OAEP.new(key)
-                    buffer = msg_to_decrypt
-                    decrypted_msg = cipher.decrypt(buffer)
-
-                    shared_secret = decrypted_msg[-32:]
-
-                    kfile = open('public_keys/public_key_' + self.manager.user_name + '.pem')
-                    pub_key = kfile.read()
-                    kfile.close()
-                    rsakey = RSA.importKey(pub_key)
-                    signer = PKCS1_v1_5.new(rsakey)
-                    digest = SHA256.new()
-
-                    #POSSIBLE ATTACK: MODIFIED MESSAGE
-                    #data = str(to_user + timestamp + msg_to_decrypt + "Attack")
-                    data = str(to_user + timestamp + msg_to_decrypt)
-
-                    digest.update(data)
+                    shared_secret = self.extract_shared_secret(msg_to_decrypt)
+                    verified = self.verify_signature(to_user, from_user, timestamp, msg_to_decrypt, sign_to_check)
 
                     # if the signature verifies setup shared secret and enc/mac keys
-                    if signer.verify(digest, sign_to_check):
-                        self.setup_shared_secret(shared_secret, from_user)
-
+                    if verified:
+                        self.setup_shared_secret(shared_secret)
                         fresh_random = "BeginChatSetup" + str(from_user) + str(shared_secret)
                         self.generate_keyfiles(fresh_random, shared_secret)
-
-
                 else:
-                    time = str(datetime.datetime.now())
-
-                    compromised_msg = "COMPROMISED" + time +str(self.manager.user_name)
-
-                    #sign compromised message
-                    # Generate signature
-                    kfile = open('private_keys/private_key_' + str(self.manager.user_name) + '.pem')
-                    keystr = kfile.read()
-                    kfile.close()
-                    key = RSA.importKey(keystr)
-
-                    signer = PKCS1_v1_5.new(key)
-                    digest = SHA256.new()
-                    digest.update(compromised_msg)
-
-                    compromised_sign = signer.sign(digest)
-                    msg_to_send = "COMPROMISED" + time + str(self.manager.user_name) + str(compromised_sign)
-
+                    # the user cannot decrypt key - chat compromised 
+                    msg_to_send = self.generate_compromised_msg()
                     self.process_outgoing_message(msg_to_send)
                     return
-
             else:
                 # if BeginChatSetup message is not for current user, do nothing
                 pass
 
-
         else:
             # if not a BeginChatSetup message, proceed as if normal message 
 
-            # if key path does not exist, system must have been compromised - return
+            # if key path DNE, system compromised - return
             if not os.path.exists('key_states/' + str(self.manager.user_name) + '_' + str(self.id) + '_keystates.txt'):
                 return
 
-            # getting enc and mac keys 
-            keyfile = 'key_states/' + str(self.manager.user_name) + '_' + str(self.id) + '_keystates.txt'
-            ifile = open(keyfile, 'rb')
-            line = ifile.readline()
-            enckey = line[len("enckey: "):len("enckey: ") + 32]
-            enckey = self.hex_to_bin(enckey)
-            line = ifile.readline()
-            mackey = line[len("mackey: "):len("mackey: ") + 32]
-            mackey = self.hex_to_bin(mackey)
-            ifile.close()
-
-
-             # create array to store rcv sequences
+            # get send sequences
             num_other_users = len(self.manager.get_other_users())
-
-            # sequences = [None] * num_other_users
             sequences = {}
-
-            # read in rcv sequences
-            statefile = 'receive_states/' + str(self.manager.user_name) + '_' + str(self.id) + '_rcvstates.txt'
-            ifile = open(statefile, 'rb')
-            line = ifile.readline()
-            i = 0
-
-            rcvsqn = 0
-            while (i < num_other_users):
-                if (line[1:4] == owner_str[1:4]):
-                    rcvsqn = line[len("0000_rcv: "):]
-                    rcvsqn = long(rcvsqn)
-                    sequences[line[:4]] = rcvsqn + 1
-                else:
-                    rcvsqnHolder = line[len("0000_rcv: "):]
-                    rcvsqnHolder = long(rcvsqnHolder)
-                    sequences[line[:4]] = rcvsqnHolder
-
-                line = ifile.readline()
-                i += 1
-
-            ifile.close()
-            # rcvsqn holds the number to be compared to the message number
-
-
-            # parse the message
-            header_length = 9  # header is 9 bytes long
-            header = msg[0:header_length]
-            iv = msg[header_length:header_length + AES.block_size]  # iv is AES.block_size bytes long
-            mac_length = 32  # SHA256 hash is 32 bytes long
-            encrypted = msg[header_length + AES.block_size:-mac_length]  # encrypted part is between iv and mac
-            mac = msg[-mac_length:]  # last mac_length bytes form the mac
-            header_version = header[0:2]  # version is encoded on 2 bytes
-            header_type = header[2:3]  # type is encoded on 1 byte
-            header_length = header[3:5]  # msg length is encoded on 2 bytes
-            header_sqn = header[5:9]  # msg sqn is encoded on 4 bytes
-
-
-            # check the msg length
-            if (len(msg) != int(header_length.encode("hex"), 16)):
-                print "Warning: Message length value in header is wrong!"
-                print "Processing is continued nevertheless..."
-
-            # check the sequence number
-            # print "Expecting sequence number " + str(rcvsqn + 1) + " or larger..."
-            sndsqn = long(header_sqn.encode("hex"), 16)
-            if (sndsqn <= rcvsqn):
-                print "Error: Message sequence number is too old!"
-                print "Processing completed."
-                sys.exit(1)
-            print "Sequence number verification is successful."
-
-            # verify the mac
-            # print "MAC verification is being performed..."
-            H = SHA256.new()
-            MAC = HMAC.new(mackey, digestmod=H)
-            MAC.update(header)
-            MAC.update(iv)
-            MAC.update(encrypted)
-            comp_mac = MAC.digest()
-
-            # print "MAC value received: " + mac.encode("hex")
-            # print "MAC value computed: " + comp_mac.encode("hex")
-            if (comp_mac != mac):
-                print "Error: MAC verification failed!"
-                print "Processing completed."
-                sys.exit(1)
-            print "MAC verified correctly."
-
-            # decrypt the encrypted part
-            # print "Decryption is attempted..."
-            ENC = AES.new(enckey, AES.MODE_CBC, iv)
-            decrypted = ENC.decrypt(encrypted)
-
-            # remove and check padding
-            i = -1
-            while (decrypted[i] == '\x00'): i -= 1
-            padding = decrypted[i:]
-            payload = decrypted[:i]
-            # print "Padding " + padding.encode("hex") + " is observed."
-            if (padding[0] != '\x01'):
-                print "Error: Wrong padding detected!"
-                print "Processing completed."
-                sys.exit(1)
-            print "Padding is successfully removed."
-
-            # save state
-            list_of_users = self.manager.get_other_users()
-            i = 0
-            state = ""
-            for user in list_of_users:
-                state = state + str(user[:4]) + "_rcv: " + str(sequences[user[:4]]) + '\r\n'
-                i += 1
-
-            ofile = open(statefile, 'wb')
-            ofile.write(state)
-            ofile.close()
+            rcvsqn = self.get_rcv_sequences(owner_str, sequences)
+        
+            # check and decode message
+            payload = self.decode_message(msg, rcvsqn)
+            
+            # save state 
+            self.save_rcv_states(sequences)
 
             # print message and add it to the list of printed messages
             self.print_message(
@@ -416,26 +270,9 @@ class Conversation:
                 owner_str=owner_str
             )
 
-
+        # every 5 messages update keyfiles
         if (len(self.all_messages) % 5 == 0):
-            # getting fresh random
-            file = open("key_states/" + str(self.manager.user_name) + "_" + str(self.id) + "_" + "keystates.txt", 'rb')
-            line = file.readline()
-            enckey = line[len("enckey: "):len("enckey: ")+32]
-            enckey = self.hex_to_bin(enckey)
-            line = file.readline()
-            mackey = line[len("mackey: "):len("mackey: ")+32]
-            mackey = self.hex_to_bin(mackey)
-            fresh_random = str(enckey + mackey)
-            file.close()
-
-            # getting shared secret
-            file = open(self.manager.user_name + "_shared_secrets/" + str(self.id) + ".txt", 'rb')
-            line = file.readline()
-            shared_secret = line[len("shared secret: "):len("shared secret: ")+32]
-            file.close()
-
-            self.generate_keyfiles(fresh_random, shared_secret)
+            self.update_keyfiles()
 
 
     def process_outgoing_message(self, msg_raw, originates_from_console=False):
@@ -462,7 +299,6 @@ class Conversation:
             signer = PKCS1_v1_5.new(rsakey)
             digest = SHA256.new()
             data = "COMPROMISED" + str(timestamp) + str(user_compromised)
-            print "data length " + str(len(data))
 
             digest.update(data)
 
@@ -485,11 +321,9 @@ class Conversation:
     
 
             if (signer.verify(digest, sign_to_check) and (key_created_object < time_object) and all_counter_zero):
-                print "ENTERED IF"
+                # post compromised message to the conversation
                 encoded_msg = base64.encodestring("COMPROMISED:" + user_compromised + " is compromised. Proceed at your own risk.")
-                # post the message to the conversation
                 self.manager.post_message_to_conversation(encoded_msg)
-                print "POSTED MESSAGE"
                 return
 
             else:
@@ -499,25 +333,19 @@ class Conversation:
 
         if (self.needs_key):
 
-            # Generate a shared secret
-            keystring = Random.get_random_bytes(32)
+            # generate a shared secret
+            keystring = self.generate_shared_secret()
 
-            if not os.path.exists(self.manager.user_name + "_shared_secrets"):
-                os.makedirs(self.manager.user_name + "_shared_secrets")
-
-            # open and write send states file
-            file = open(self.manager.user_name + "_shared_secrets/" + str(self.id) + ".txt", 'w')
-
-            file.write("shared secret: " + keystring)
-
-            list_of_users = self.manager.get_other_users()
-
+            # generate enc and mac keys from shared secret
             fresh_random = "BeginChatSetup" + str(self.manager.user_name) + str(keystring)
             self.generate_keyfiles(fresh_random, keystring)
 
-            # BeginChatSetup|B|A|[Ta | PubEncKb(A|K) | Sigka(B|Ta|PubEnckB(A|K)]  )
+            # MESSAGE FORMAT:
+            # BeginChatSetup|B|A|[Ta | PubEncKb(A|K) | Sigka(B|Ta|PubEnckB(A|K)] )
 
-            # PubEncKB(A|K): RSA encryption using public key of user
+            # PART 1
+            # PubEncKb(A|K): RSA encryption using public key of user
+            list_of_users = self.manager.get_other_users()
             for user in list_of_users:
                 for person in RSAKeys:
                     if person["user_name"] == user:
@@ -540,8 +368,8 @@ class Conversation:
                         time = datetime.datetime.now()
                         msg_to_sign = str(user) + str(time) + encoded_msg
 
-                        # Generate signature
-                        kfile = open('private_keys/private_key_' + user + '.pem')
+                        # Generate signature with own private key
+                        kfile = open('private_keys/private_key_' + self.manager.user_name + '.pem')
                         keystr = kfile.read()
                         kfile.close()
                         key = RSA.importKey(keystr)
@@ -655,8 +483,6 @@ class Conversation:
 
 
 
-        # ------------------------ END MEL -----------------------------------
-
         # if the message has been typed into the console, record it, so it is never printed again during chatting
         if originates_from_console == True:
             # message is already seen on the console
@@ -673,7 +499,176 @@ class Conversation:
         # post the message to the conversation
         self.manager.post_message_to_conversation(encoded_msg)
 
-    def setup_shared_secret(self, shared_secret, from_user):
+
+    def decode_message(self, msg, rcvsqn):
+        # getting enc and mac keys 
+        keyfile = 'key_states/' + str(self.manager.user_name) + '_' + str(self.id) + '_keystates.txt'
+        ifile = open(keyfile, 'rb')
+        line = ifile.readline()
+        enckey = line[len("enckey: "):len("enckey: ") + 32]
+        enckey = self.hex_to_bin(enckey)
+        line = ifile.readline()
+        mackey = line[len("mackey: "):len("mackey: ") + 32]
+        mackey = self.hex_to_bin(mackey)
+        ifile.close()
+
+        # parse the message
+        header_length = 9  # header is 9 bytes long
+        header = msg[0:header_length]
+        iv = msg[header_length:header_length + AES.block_size]  # iv is AES.block_size bytes long
+        mac_length = 32  # SHA256 hash is 32 bytes long
+        encrypted = msg[header_length + AES.block_size:-mac_length]  # encrypted part is between iv and mac
+        mac = msg[-mac_length:]  # last mac_length bytes form the mac
+        header_version = header[0:2]  # version is encoded on 2 bytes
+        header_type = header[2:3]  # type is encoded on 1 byte
+        header_length = header[3:5]  # msg length is encoded on 2 bytes
+        header_sqn = header[5:9]  # msg sqn is encoded on 4 bytes
+
+        # check the msg length
+        if (len(msg) != int(header_length.encode("hex"), 16)):
+            print "Warning: Message length value in header is wrong!"
+            print "Processing is continued nevertheless..."
+
+        # check the sequence number
+        # print "Expecting sequence number " + str(rcvsqn + 1) + " or larger..."
+        sndsqn = long(header_sqn.encode("hex"), 16)
+        if (sndsqn <= rcvsqn):
+            print "Error: Message sequence number is too old!"
+            print "Processing completed."
+            sys.exit(1)
+
+        # verify the mac
+        # print "MAC verification is being performed..."
+        H = SHA256.new()
+        MAC = HMAC.new(mackey, digestmod=H)
+        MAC.update(header)
+        MAC.update(iv)
+        MAC.update(encrypted)
+        comp_mac = MAC.digest()
+
+        # print "MAC value received: " + mac.encode("hex")
+        # print "MAC value computed: " + comp_mac.encode("hex")
+        if (comp_mac != mac):
+            print "Error: MAC verification failed!"
+            print "Processing completed."
+            sys.exit(1)
+        # print "MAC verified correctly."
+
+        # decrypt the encrypted part
+        # print "Decryption is attempted..."
+        ENC = AES.new(enckey, AES.MODE_CBC, iv)
+        decrypted = ENC.decrypt(encrypted)
+
+        # remove and check padding
+        i = -1
+        while (decrypted[i] == '\x00'): i -= 1
+        padding = decrypted[i:]
+        payload = decrypted[:i]
+        # print "Padding " + padding.encode("hex") + " is observed."
+        if (padding[0] != '\x01'):
+            print "Error: Wrong padding detected!"
+            print "Processing completed."
+            sys.exit(1)
+        print "Padding is successfully removed."
+
+        return payload
+
+
+
+    def generate_shared_secret(self):
+        '''
+        Generates and saves shared secret 
+        :return: String
+        '''
+        keystring = Random.get_random_bytes(32)
+        self.setup_shared_secret(keystring)
+        return keystring
+
+    def extract_shared_secret(self, msg_to_decrypt):
+        '''
+        Extracts shared secret from encrypted BeginChatSetup message
+        :return: String
+        '''
+        kfile = open('private_keys/private_key_'+ self.manager.user_name + '.pem')
+        kstr = kfile.read()
+        kfile.close()
+        key = RSA.importKey(kstr)
+        cipher = PKCS1_OAEP.new(key)
+        buffer = msg_to_decrypt
+        decrypted_msg = cipher.decrypt(buffer)
+
+        shared_secret = decrypted_msg[-32:]
+
+        return shared_secret
+
+    def verify_signature(self, to_user, from_user, timestamp, msg_to_decrypt, sign_to_check):
+        '''
+        Checks the signature with the public key of the user who sent 
+        the BeginChatSetup message
+        :return: boolean
+        '''
+        kfile = open('public_keys/public_key_' + from_user + '.pem')
+        pub_key = kfile.read()
+        kfile.close()
+        rsakey = RSA.importKey(pub_key)
+        signer = PKCS1_v1_5.new(rsakey)
+        digest = SHA256.new()
+
+        #POSSIBLE ATTACK: MODIFIED MESSAGE
+        #data = str(to_user + timestamp + msg_to_decrypt + "Attack")
+        data = str(to_user + timestamp + msg_to_decrypt)
+
+        digest.update(data)
+
+        return signer.verify(digest, sign_to_check)
+
+    def get_rcv_sequences(self, owner_str, sequences):
+        
+
+        # read in rcv sequences
+        statefile = 'receive_states/' + str(self.manager.user_name) + '_' + str(self.id) + '_rcvstates.txt'
+        ifile = open(statefile, 'rb')
+        line = ifile.readline()
+
+        i = 0
+        num_other_users = len(self.manager.get_other_users())
+        rcvsqn = 0
+        while (i < num_other_users):
+            if (line[1:4] == owner_str[1:4]):
+                rcvsqn = line[len("0000_rcv: "):]
+                rcvsqn = long(rcvsqn)
+                sequences[line[:4]] = rcvsqn + 1
+            else:
+                rcvsqnHolder = line[len("0000_rcv: "):]
+                rcvsqnHolder = long(rcvsqnHolder)
+                sequences[line[:4]] = rcvsqnHolder
+
+            line = ifile.readline()
+            i += 1
+
+        ifile.close()
+
+        return rcvsqn
+
+    def save_rcv_states(self, sequences):
+        # save state
+        list_of_users = self.manager.get_other_users()
+        i = 0
+        state = ""
+        for user in list_of_users:
+            state = state + str(user[:4]) + "_rcv: " + str(sequences[user[:4]]) + '\r\n'
+            i += 1
+
+        ofile = open("receive_states/" + self.manager.user_name + "_" + str(self.id) + "_rcvstates.txt", 'wb')
+        ofile.write(state)
+        ofile.close()
+
+
+    def setup_shared_secret(self, shared_secret):
+        '''
+        Writes shared secret file
+        :return: None
+        '''
         self.needs_key = False
 
         if not os.path.exists(self.manager.user_name + "_shared_secrets"):
@@ -686,6 +681,10 @@ class Conversation:
         file.close()
 
     def generate_keyfiles(self, fresh_rand, shared_secret):
+        '''
+        Generates keyfiles based on fresh random and the shared secret 
+        :return: None
+        '''
         #ENC KEY
         h = HMAC.new(shared_secret)
         hash = SHA256.new()
@@ -712,6 +711,27 @@ class Conversation:
         file.write("enckey: " + enc_key + "\n")
         file.write("mackey: " + mac_key)
         file.close()
+
+    def update_keyfiles(self):
+        # getting fresh random
+        file = open("key_states/" + str(self.manager.user_name) + "_" + str(self.id) + "_" + "keystates.txt", 'rb')
+        line = file.readline()
+        enckey = line[len("enckey: "):len("enckey: ")+32]
+        enckey = self.hex_to_bin(enckey)
+        line = file.readline()
+        mackey = line[len("mackey: "):len("mackey: ")+32]
+        mackey = self.hex_to_bin(mackey)
+        fresh_random = str(enckey + mackey)
+        file.close()
+
+        # getting shared secret
+        file = open(self.manager.user_name + "_shared_secrets/" + str(self.id) + ".txt", 'rb')
+        line = file.readline()
+        shared_secret = line[len("shared secret: "):len("shared secret: ")+32]
+        file.close()
+
+        self.generate_keyfiles(fresh_random, shared_secret)
+
 
     def check_counters(self, file):
         '''
@@ -745,6 +765,30 @@ class Conversation:
         file.close()
 
         return all_counter_zero
+
+    def generate_compromised_msg(self):
+        '''
+        Creates message that current user has been compromised
+        :return: String
+        '''
+        time = str(datetime.datetime.now())
+
+        compromised_msg = "COMPROMISED" + time +str(self.manager.user_name)
+
+        # sign compromised message
+        kfile = open('private_keys/private_key_' + str(self.manager.user_name) + '.pem')
+        keystr = kfile.read()
+        kfile.close()
+        key = RSA.importKey(keystr)
+
+        signer = PKCS1_v1_5.new(key)
+        digest = SHA256.new()
+        digest.update(compromised_msg)
+
+        compromised_sign = signer.sign(digest)
+        msg_to_send = "COMPROMISED" + time + str(self.manager.user_name) + str(compromised_sign)
+
+        return msg_to_send
 
 
     def print_message(self, msg_raw, owner_str):
