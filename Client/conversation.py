@@ -188,7 +188,6 @@ class Conversation:
                 :param print_all: is the message part of the conversation history?
                 :return: None
                 '''
-
         # basic message processing
         msg = base64.decodestring(msg_raw)
 
@@ -215,20 +214,10 @@ class Conversation:
                 msg_to_decrypt = msg[-512:-256]
                 sign_to_check = msg[-256:]
 
-                time_object = datetime.datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S.%f")
-                
-                #POSSIBLE ATTACK: OLD KEY
-                #time_object = time_object - datetime.timedelta(hours=48)
+                is_fresh = self.ensure_key_freshness(timestamp)
 
-                time_24hours = datetime.datetime.now() - datetime.timedelta(hours=24)
-
-                num_other_users = len(self.manager.get_other_users())
-
-                all_counter_zero = self.check_counters("receive")
-
-                #Ensure key freshness
-                if (all_counter_zero and (time_object > time_24hours)):
-
+                if is_fresh:
+                    # if key is fresh, check signature
                     shared_secret = self.extract_shared_secret(msg_to_decrypt)
                     verified = self.verify_signature(to_user, from_user, timestamp, msg_to_decrypt, sign_to_check)
 
@@ -253,12 +242,10 @@ class Conversation:
             if not os.path.exists('key_states/' + str(self.manager.user_name) + '_' + str(self.id) + '_keystates.txt'):
                 return
 
-            # get send sequences
+            # get receive sequences, check and decode message
             num_other_users = len(self.manager.get_other_users())
             sequences = {}
             rcvsqn = self.get_rcv_sequences(owner_str, sequences)
-        
-            # check and decode message
             payload = self.decode_message(msg, rcvsqn)
             
             # save state 
@@ -270,8 +257,8 @@ class Conversation:
                 owner_str=owner_str
             )
 
-        # every 5 messages update keyfiles
-        if (len(self.all_messages) % 5 == 0):
+        # every 100 messages update keyfiles
+        if (len(self.all_messages) % 100 == 0):
             self.update_keyfiles()
 
 
@@ -285,54 +272,20 @@ class Conversation:
         '''
         # if sending a compromised message
         if (msg_raw[0:11] == "COMPROMISED"):
-
-            sign_to_check = msg_raw[-256:]
-            timestamp = msg_raw[11:37]
-            time_object = datetime.datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S.%f")
+            valid = self.check_compromised_msg(msg_raw)
             user_compromised = msg_raw[37:-256]
 
-            # verify signature
-            kfile = open('public_keys/public_key_' + user_compromised + '.pem')
-            pub_key = kfile.read()
-            kfile.close()
-            rsakey = RSA.importKey(pub_key)
-            signer = PKCS1_v1_5.new(rsakey)
-            digest = SHA256.new()
-            data = "COMPROMISED" + str(timestamp) + str(user_compromised)
-
-            digest.update(data)
-
-            num_other_users = len(self.manager.get_other_users())
-            all_counter_zero = True
-
-            file = open("send_states/" + str(self.manager.user_name) + "_" + str(self.id) + "_sndstates.txt", "rb")
-            line = file.readline()
-            i = 0
-            while(i < num_other_users):
-                sndsqn = line[len("0000_snd: "):]
-                sndsqn = long(sndsqn)
-                if (sndsqn != 0):
-                    all_counter_zero = False
-                line = file.readline()
-                i+=1
-            file.close()
-
-            key_created_object = datetime.datetime.strptime(self.key_created_time, "%Y-%m-%d %H:%M:%S.%f")
-    
-
-            if (signer.verify(digest, sign_to_check) and (key_created_object < time_object) and all_counter_zero):
+            if valid:
                 # post compromised message to the conversation
                 encoded_msg = base64.encodestring("COMPROMISED:" + user_compromised + " is compromised. Proceed at your own risk.")
                 self.manager.post_message_to_conversation(encoded_msg)
                 return
-
             else:
                 # someone has tried to replay a compromised message, do nothing
                 return
 
 
         if (self.needs_key):
-
             # generate a shared secret
             keystring = self.generate_shared_secret()
 
@@ -340,55 +293,82 @@ class Conversation:
             fresh_random = "BeginChatSetup" + str(self.manager.user_name) + str(keystring)
             self.generate_keyfiles(fresh_random, keystring)
 
-            # MESSAGE FORMAT:
-            # BeginChatSetup|B|A|[Ta | PubEncKb(A|K) | Sigka(B|Ta|PubEnckB(A|K)] )
+            # send secret to other users
+            self.send_begin_chat(keystring)
 
-            # PART 1
-            # PubEncKb(A|K): RSA encryption using public key of user
-            list_of_users = self.manager.get_other_users()
-            for user in list_of_users:
-                for person in RSAKeys:
-                    if person["user_name"] == user:
-                        pubkey_file = person["RSA_public_key"]
+        # create array to store send sequences
+        sequences = {}
+        sndsqn = self.get_snd_sequences(sequences)
 
-                        kfile = open(pubkey_file)
-                        keystr = kfile.read()
-                        kfile.close()
+        processed_msg = self.encode_message(msg_raw, sndsqn)
 
-                        pubkey = RSA.importKey(keystr)
-                        cipher = PKCS1_OAEP.new(pubkey)
+        self.save_snd_states(sequences)
 
-                        # plength = 214 - (len(msg) % 214)
-                        # msg += chr(plength) * plength
-                        msg = str(self.manager.user_name) + str(keystring)
+        # if the message has been typed into the console, record it, so it is never printed again during chatting
+        if originates_from_console == True:
+            # message is already seen on the console
+            m = Message(
+                owner_name=self.manager.user_name,
+                content=processed_msg
+            )
+            self.printed_messages.append(m)
 
-                        encoded_msg = cipher.encrypt(msg)
+            # process outgoing message here
+        # example is base64 encoding, extend this with any crypto processing of your protocol
+        encoded_msg = base64.encodestring(processed_msg)
 
-                        # B|Timstamp of manager|PubEncKB(A|K)
-                        time = datetime.datetime.now()
-                        msg_to_sign = str(user) + str(time) + encoded_msg
-
-                        # Generate signature with own private key
-                        kfile = open('private_keys/private_key_' + self.manager.user_name + '.pem')
-                        keystr = kfile.read()
-                        kfile.close()
-                        key = RSA.importKey(keystr)
-
-                        signer = PKCS1_v1_5.new(key)
-                        digest = SHA256.new()
-                        digest.update(msg_to_sign)
-                        sign = signer.sign(digest)
-                        msg_to_send = "BeginChatSetup" + str(user) + str(self.manager.user_name) + str(
-                            time) + encoded_msg + sign
-                        print msg_to_send
-                        encoded_msg = base64.encodestring(msg_to_send)
-
-                        # post the message to the conversation
-                        self.manager.post_message_to_conversation(encoded_msg)
-                        self.needs_key = False
-                        print self.needs_key
+        # post the message to the conversation
+        self.manager.post_message_to_conversation(encoded_msg)
 
 
+    def send_begin_chat(self, keystring):
+        # MESSAGE FORMAT:
+        # BeginChatSetup|B|A|[Ta | PubEncKb(A|K) | Sigka(B|Ta|PubEnckB(A|K)] )
+
+        # PART 1
+        # PubEncKb(A|K): RSA encryption using public key of user
+        list_of_users = self.manager.get_other_users()
+        for user in list_of_users:
+            for person in RSAKeys:
+                if person["user_name"] == user:
+                    pubkey_file = person["RSA_public_key"]
+
+                    kfile = open(pubkey_file)
+                    keystr = kfile.read()
+                    kfile.close()
+
+                    pubkey = RSA.importKey(keystr)
+                    cipher = PKCS1_OAEP.new(pubkey)
+
+                    # plength = 214 - (len(msg) % 214)
+                    # msg += chr(plength) * plength
+                    msg = str(self.manager.user_name) + str(keystring)
+
+                    encoded_msg = cipher.encrypt(msg)
+
+                    # B|Timstamp of manager|PubEncKB(A|K)
+                    time = datetime.datetime.now()
+                    msg_to_sign = str(user) + str(time) + encoded_msg
+
+                    # Generate signature with own private key
+                    kfile = open('private_keys/private_key_' + self.manager.user_name + '.pem')
+                    keystr = kfile.read()
+                    kfile.close()
+                    key = RSA.importKey(keystr)
+
+                    signer = PKCS1_v1_5.new(key)
+                    digest = SHA256.new()
+                    digest.update(msg_to_sign)
+                    sign = signer.sign(digest)
+                    msg_to_send = "BeginChatSetup" + str(user) + str(self.manager.user_name) + str(
+                        time) + encoded_msg + sign
+                    encoded_msg = base64.encodestring(msg_to_send)
+
+                    # post the message to the conversation
+                    self.manager.post_message_to_conversation(encoded_msg)
+        self.needs_key = False
+
+    def encode_message(self, msg_raw, sndsqn):
         # read the content of the key file to get keys
         keyfile = 'key_states/' + str(self.manager.user_name) + '_' + str(self.id) + '_keystates.txt'
         ifile = open(keyfile, 'rb')
@@ -399,28 +379,6 @@ class Conversation:
         mackey = line[len("mackey: "):len("mackey: ") + 32]
         mackey = self.hex_to_bin(mackey)
         ifile.close()
-
-        # create array to store send sequences
-        num_other_users = len(self.manager.get_other_users())
-
-        sequences = {}
-
-        statefile = 'send_states/' + str(self.manager.user_name) + '_' + str(self.id) + '_sndstates.txt'
-        ifile = open(statefile, 'rb')
-        line = ifile.readline()
-        i = 0
-
-        # get send sequenses from the state file
-        while(i < num_other_users):
-            sndsqn = line[len("0000_snd: "):]
-            sndsqn = long(sndsqn)
-            # assign sequence number to user in dictionary
-            sequences[line[:4]] = sndsqn
-            line = ifile.readline()
-            i += 1
-
-        ifile.close()
-
 
         #set payload
         payload = msg_raw
@@ -466,38 +424,9 @@ class Conversation:
 
         processed_msg = header + iv + encrypted + mac
 
-
-        # save state
-        list_of_users = self.manager.get_other_users()
-        state = ""
-        i = 0
-        for user in list_of_users:
-            userStr = str(user)
-            userStr = userStr[:4]
-            state = state + userStr + "_snd: " + str(sequences[userStr] + 1) + '\r\n'
-            i += 1
-
-        ofile = open(statefile, 'wb')
-        ofile.write(state)
-        ofile.close()
+        return processed_msg
 
 
-
-        # if the message has been typed into the console, record it, so it is never printed again during chatting
-        if originates_from_console == True:
-            # message is already seen on the console
-            m = Message(
-                owner_name=self.manager.user_name,
-                content=processed_msg
-            )
-            self.printed_messages.append(m)
-
-            # process outgoing message here
-        # example is base64 encoding, extend this with any crypto processing of your protocol
-        encoded_msg = base64.encodestring(processed_msg)
-
-        # post the message to the conversation
-        self.manager.post_message_to_conversation(encoded_msg)
 
 
     def decode_message(self, msg, rcvsqn):
@@ -530,7 +459,6 @@ class Conversation:
             print "Processing is continued nevertheless..."
 
         # check the sequence number
-        # print "Expecting sequence number " + str(rcvsqn + 1) + " or larger..."
         sndsqn = long(header_sqn.encode("hex"), 16)
         if (sndsqn <= rcvsqn):
             print "Error: Message sequence number is too old!"
@@ -546,16 +474,12 @@ class Conversation:
         MAC.update(encrypted)
         comp_mac = MAC.digest()
 
-        # print "MAC value received: " + mac.encode("hex")
-        # print "MAC value computed: " + comp_mac.encode("hex")
         if (comp_mac != mac):
             print "Error: MAC verification failed!"
             print "Processing completed."
             sys.exit(1)
-        # print "MAC verified correctly."
 
         # decrypt the encrypted part
-        # print "Decryption is attempted..."
         ENC = AES.new(enckey, AES.MODE_CBC, iv)
         decrypted = ENC.decrypt(encrypted)
 
@@ -564,16 +488,36 @@ class Conversation:
         while (decrypted[i] == '\x00'): i -= 1
         padding = decrypted[i:]
         payload = decrypted[:i]
-        # print "Padding " + padding.encode("hex") + " is observed."
+
         if (padding[0] != '\x01'):
             print "Error: Wrong padding detected!"
             print "Processing completed."
             sys.exit(1)
-        print "Padding is successfully removed."
 
         return payload
 
+    def check_compromised_msg(self, msg_raw):
+        sign_to_check = msg_raw[-256:]
+        timestamp = msg_raw[11:37]
+        time_compromised = datetime.datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S.%f")
+        user_compromised = msg_raw[37:-256]
 
+        # verify signature
+        kfile = open('public_keys/public_key_' + user_compromised + '.pem')
+        pub_key = kfile.read()
+        kfile.close()
+        rsakey = RSA.importKey(pub_key)
+        signer = PKCS1_v1_5.new(rsakey)
+        digest = SHA256.new()
+        data = "COMPROMISED" + str(timestamp) + str(user_compromised)
+
+        digest.update(data)
+        
+        all_counter_zero = self.check_counters("send")
+        time_key_created = datetime.datetime.strptime(self.key_created_time, "%Y-%m-%d %H:%M:%S.%f")
+
+        # if signature verifies, compromised sent after key created, and no messages have been sent
+        return (signer.verify(digest, sign_to_check) and (time_key_created < time_compromised) and all_counter_zero)
 
     def generate_shared_secret(self):
         '''
@@ -622,9 +566,58 @@ class Conversation:
 
         return signer.verify(digest, sign_to_check)
 
+    def ensure_key_freshness(self, timestamp):
+        time_object = datetime.datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S.%f")
+        
+        #POSSIBLE ATTACK: OLD KEY
+        #time_object = time_object - datetime.timedelta(hours=48)
+
+        time_24hours = datetime.datetime.now() - datetime.timedelta(hours=24)
+        all_counter_zero = self.check_counters("receive")
+
+        return (all_counter_zero and (time_object > time_24hours))
+
+    def get_snd_sequences(self, sequences):
+
+        statefile = 'send_states/' + str(self.manager.user_name) + '_' + str(self.id) + '_sndstates.txt'
+        ifile = open(statefile, 'rb')
+        line = ifile.readline()
+        i = 0
+
+        num_other_users = len(self.manager.get_other_users())
+        # get send sequenses from the state file
+        while(i < num_other_users):
+            sndsqn = line[len("0000_snd: "):]
+            sndsqn = long(sndsqn)
+            # assign sequence number to user in dictionary
+            sequences[line[:4]] = sndsqn
+            line = ifile.readline()
+            i += 1
+
+        ifile.close()
+
+        return sndsqn
+
+    def save_snd_states(self, sequences):
+        statefile = "send_states/" + self.manager.user_name + "_" + str(self.id) + "_sndstates.txt"
+
+        # save state
+        list_of_users = self.manager.get_other_users()
+        state = ""
+        i = 0
+        for user in list_of_users:
+            userStr = str(user)
+            userStr = userStr[:4]
+            state = state + userStr + "_snd: " + str(sequences[userStr] + 1) + '\r\n'
+            i += 1
+
+        ofile = open(statefile, 'wb')
+        ofile.write(state)
+        ofile.close()
+
+
     def get_rcv_sequences(self, owner_str, sequences):
         
-
         # read in rcv sequences
         statefile = 'receive_states/' + str(self.manager.user_name) + '_' + str(self.id) + '_rcvstates.txt'
         ifile = open(statefile, 'rb')
@@ -803,7 +796,7 @@ class Conversation:
         msg = Message(content=msg_raw,
                       owner_name=owner_str)
         # If it does not originate from the current user or it is part of conversation history, print it
-        if msg not in self.printed_messages:
+        if msg not in self.printed_messages and owner_str != self.manager.user_name:
             print msg
             # Append it to the list of printed messages
             self.printed_messages.append(msg)
