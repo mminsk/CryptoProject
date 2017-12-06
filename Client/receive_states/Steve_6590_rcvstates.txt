@@ -1,2 +1,0 @@
-Bill_rcv: 2
-Elon_rcv: 3

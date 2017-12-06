@@ -1,2 +1,0 @@
-Bill_snd: 4
-Stev_snd: 4

@@ -1,2 +1,0 @@
-Stev_snd: 2
-Elon_snd: 2

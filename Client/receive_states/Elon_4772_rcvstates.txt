@@ -1,2 +1,0 @@
-Bill_rcv: 1
-Stev_rcv: 0

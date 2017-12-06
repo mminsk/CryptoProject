@@ -1,2 +1,0 @@
-Elon_rcv: 0
-Stev_rcv: 0

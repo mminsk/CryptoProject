@@ -1,2 +1,0 @@
-Bill_snd: 9
-Elon_snd: 9
