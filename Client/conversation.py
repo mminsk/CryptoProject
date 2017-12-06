@@ -49,6 +49,7 @@ class Conversation:
         self.msg_process_loop_started = True
         self.needs_key = True
         self.key_created_time = ""
+        self.num_processed_msgs = 0
 
     # convert a hex string h to a binary string
     def hex_to_bin(self, h):
@@ -142,6 +143,7 @@ class Conversation:
         Creates send state files, receive state files, key state files 
         '''
         self.needs_key = True
+        self.num_processed_msgs = 0
 
         # get conversation specifics 
         users = self.manager.get_other_users()
@@ -153,12 +155,13 @@ class Conversation:
             os.makedirs("send_states")
 
         # open and write send states file
-        file = open("send_states/" + str(manager_name) + "_" + str(conversationID) + "_sndstates.txt",'w')
-        for user in users:
-            if user != manager_name:
-                file.write(user[:4] + "_snd: 0")
-                file.write("\n")
-        file.close()
+        if not os.path.exists("send_states/" + str(manager_name) + "_" + str(conversationID) + "_sndstates.txt"):
+            file = open("send_states/" + str(manager_name) + "_" + str(conversationID) + "_sndstates.txt",'w')
+            for user in users:
+                if user != manager_name:
+                    file.write(user[:4] + "_snd: 0")
+                    file.write("\n")
+            file.close()
 
         # create receive states file
         if not os.path.exists("receive_states"):
@@ -179,6 +182,8 @@ class Conversation:
 
 
     def process_incoming_message(self, msg_raw, msg_id, owner_str):
+        self.num_processed_msgs += 1
+
         '''
                 Process incoming messages
                 :param msg_raw: the raw message
@@ -226,6 +231,12 @@ class Conversation:
                         self.setup_shared_secret(shared_secret)
                         fresh_random = "BeginChatSetup" + str(from_user) + str(shared_secret)
                         self.generate_keyfiles(fresh_random, shared_secret)
+
+                    else:
+                        # the user cannot decrypt key - chat compromised
+                        msg_to_send = self.generate_compromised_msg()
+                        self.process_outgoing_message(msg_to_send)
+                        return
                 else:
                     # the user cannot decrypt key - chat compromised 
                     msg_to_send = self.generate_compromised_msg()
@@ -258,7 +269,7 @@ class Conversation:
             )
 
         # every 100 messages update keyfiles
-        if (len(self.all_messages) % 100 == 0):
+        if (self.num_processed_msgs % 5 == 0):
             self.update_keyfiles()
 
 
@@ -460,7 +471,10 @@ class Conversation:
 
         # check the sequence number
         sndsqn = long(header_sqn.encode("hex"), 16)
-        if (sndsqn <= rcvsqn):
+
+        #POSSIBLE ATTACK:
+        #if (True):
+        if (sndsqn <= rcvsqn ):
             print "Error: Message sequence number is too old!"
             print "Processing completed."
             sys.exit(1)
